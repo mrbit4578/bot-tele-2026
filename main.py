@@ -69,7 +69,9 @@ def _admin_denied_response():
     """
     admin_key = os.getenv("ADMIN_KEY", "").strip()
     if admin_key:
-        provided = request.headers.get("X-Admin-Key", "") or request.cookies.get("admin_key", "")
+        # Cat khoang trang 2 dau o ca 2 phia: key dan tu clipboard hay dinh
+        # khoang trang/xuong dong thua -> truoc day so sanh that bai du key dung.
+        provided = (request.headers.get("X-Admin-Key", "") or request.cookies.get("admin_key", "")).strip()
         if provided != admin_key:
             return jsonify({"ok": False, "message": "Thieu hoac sai ADMIN_KEY. Nhap khoa quan tri de mo Dashboard."}), 401
         return None
