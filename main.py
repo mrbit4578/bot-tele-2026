@@ -53,17 +53,15 @@ logger.addHandler(MemoryLogHandler())
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 
 
-@app.before_request
-def _protect_api():
-    """Bao ve cac API cua Dashboard bang ADMIN_KEY.
+def _admin_denied_response():
+    """Tra 401 JSON neu request API chua dat yeu cau ADMIN_KEY, nguoc lai tra None.
 
-    - Dat bien ADMIN_KEY (Vercel Settings hoac .env) -> moi request /api/*
-      phai kem header X-Admin-Key dung khoa (Dashboard tu dong gui kem).
-    - Tren Vercel ma chua dat ADMIN_KEY: van chan /api/* vi /api/state chua
-      token/key nhay cam. Chay local (khong dat khoa) thi mo nhu cu.
+    Bao ve theo tung endpoint (khong dua vao request.path vi Vercel rewrite
+    /(.*) -> /api/index lam duong dan Flask nhan duoc khong dang tin cay).
+    - Da dat ADMIN_KEY: bat buoc gui dung header X-Admin-Key.
+    - Tren Vercel chua dat ADMIN_KEY: chan (vi /api/state chua cau hinh nhay cam).
+    - Local chua dat khoa: mo nhu cu cho tien dung tren may nha.
     """
-    if not request.path.startswith("/api/"):
-        return None
     admin_key = os.getenv("ADMIN_KEY", "").strip()
     if admin_key:
         provided = request.headers.get("X-Admin-Key", "") or request.cookies.get("admin_key", "")
@@ -73,6 +71,27 @@ def _protect_api():
     if IS_VERCEL:
         return jsonify({"ok": False, "message": "Hay dat bien ADMIN_KEY trong Vercel Settings roi redeploy de mo khoa Dashboard."}), 401
     return None
+
+
+@app.before_request
+def _protect_api():
+    # url_rule duoc Flask gan sau khi khop route theo duong dan goc cua request,
+    # dang tin cay hon request.path trong moi truong rewrite cua Vercel.
+    rule = request.url_rule
+    if rule is not None and rule.rule.startswith("/api/"):
+        return _admin_denied_response()
+    return None
+
+
+@app.route("/__debug")
+def debug_environ():
+    """Chan doan tam thoi: xem Vercel truyen duong dan/headers gi vao Flask."""
+    keys = ["PATH_INFO", "SCRIPT_NAME", "REQUEST_URI", "QUERY_STRING", "HTTP_X_VERCEL_REWRITE_URL", "HTTP_X_MATCHED_PATH", "HTTP_X_ORIGINAL_URL", "HTTP_X_FORWARDED_URI"]
+    info = {k: request.environ.get(k) for k in keys}
+    info["url_rule"] = str(request.url_rule) if request.url_rule else None
+    info["path"] = request.path
+    info["full_path"] = request.full_path
+    return jsonify({"ok": True, "debug": info})
 
 db = DatabaseManager()
 faq_engine = FAQEngine(db)
