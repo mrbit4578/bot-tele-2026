@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from database import DatabaseManager, generate_supabase_sql
 from faq_engine import FAQEngine
 import signal_relay
+import news_feed
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -245,9 +246,20 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
                 [{"text": "📡 Tín hiệu mới nhất", "callback_data": "menu_signal"}],
                 [{"text": "🧠 3 Engine tín hiệu", "callback_data": "menu_engines"}],
                 [{"text": "🛡 Quản trị rủi ro", "callback_data": "menu_risk"}],
+                [{"text": "📰 Tin kinh tế", "callback_data": "menu_news"}],
                 [{"text": "🖥 Mở Cockpit NexusPilot", "url": signal_relay.COCKPIT_URL}],
                 [{"text": "📋 FAQ NexusPilot", "callback_data": "menu_faq"},
                  {"text": "👤 Hỗ trợ", "callback_data": "menu_human_support"}]
+            ]
+        }
+
+    if menu_type == "news":
+        return {
+            "inline_keyboard": [
+                [{"text": "📰 Tin mới nhất (24h)", "callback_data": "news_latest"}],
+                [{"text": "⏩ Sắp ra — 7 ngày tới", "callback_data": "news_upcoming"}],
+                [{"text": "⏪ Đã ra — 7 ngày qua", "callback_data": "news_released"}],
+                [{"text": "⬅️ Menu chính", "callback_data": "menu_consultant"}]
             ]
         }
 
@@ -335,6 +347,30 @@ def generate_bot_reply(
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
+        if callback_data == "menu_news":
+            return {
+                "responded": True,
+                "text": "📰 **TIN KINH TẾ FOREXFACTORY**\nChọn khoảng thời gian anh muốn xem:",
+                "reply_markup": build_inline_keyboard("news")
+            }
+        if callback_data == "news_latest":
+            return {
+                "responded": True,
+                "text": news_feed.format_latest(),
+                "reply_markup": build_inline_keyboard("news")
+            }
+        if callback_data == "news_upcoming":
+            return {
+                "responded": True,
+                "text": news_feed.format_upcoming(),
+                "reply_markup": build_inline_keyboard("news")
+            }
+        if callback_data == "news_released":
+            return {
+                "responded": True,
+                "text": news_feed.format_past(),
+                "reply_markup": build_inline_keyboard("news")
+            }
         if callback_data == "menu_signal":
             return {
                 "responded": True,
@@ -499,6 +535,27 @@ def generate_bot_reply(
             "reply_markup": build_inline_keyboard("main_consultant")
         }
 
+    if cmd in ("/tin_moi", "/tin", "/news"):
+        return {
+            "responded": True,
+            "text": news_feed.format_latest(),
+            "reply_markup": build_inline_keyboard("news")
+        }
+
+    if cmd in ("/tin_sap_ra", "/lich_sap_ra"):
+        return {
+            "responded": True,
+            "text": news_feed.format_upcoming(),
+            "reply_markup": build_inline_keyboard("news")
+        }
+
+    if cmd in ("/tin_da_ra", "/lich_da_ra"):
+        return {
+            "responded": True,
+            "text": news_feed.format_past(),
+            "reply_markup": build_inline_keyboard("news")
+        }
+
     if cmd == "/engines":
         return {
             "responded": True,
@@ -530,6 +587,9 @@ def generate_bot_reply(
                 "/engines — Giới thiệu 3 engine tín hiệu\n"
                 "/risk — Quy tắc quản trị rủi ro\n"
                 "/cockpit — Mở web cockpit\n"
+                "/tin_moi — Tin kinh tế mới nhất (24h)\n"
+                "/tin_sap_ra — Lịch kinh tế 7 ngày tới\n"
+                "/tin_da_ra — Tin kinh tế đã ra 7 ngày qua\n"
                 "/faq — Câu hỏi thường gặp\n"
                 "/support — Gặp tư vấn viên"
             ),
@@ -828,6 +888,9 @@ def api_step1_verify():
         {"command": "engines", "description": "Giới thiệu 3 engine tín hiệu"},
         {"command": "risk", "description": "Quy tắc quản trị rủi ro"},
         {"command": "cockpit", "description": "Mở web cockpit NexusPilot"},
+        {"command": "tin_moi", "description": "Tin kinh tế mới nhất (24h)"},
+        {"command": "tin_sap_ra", "description": "Lịch kinh tế 7 ngày tới"},
+        {"command": "tin_da_ra", "description": "Tin kinh tế đã ra 7 ngày qua"},
         {"command": "faq", "description": "Câu hỏi thường gặp (VI / EN / RU)"},
         {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"},
         {"command": "help", "description": "Danh sách lệnh của bot"}

@@ -14,6 +14,7 @@ import urllib.parse
 from typing import Dict, List, Any, Optional, Tuple
 from database import DatabaseManager
 import signal_relay
+import news_feed
 
 logger = logging.getLogger("TelegramBot.FAQEngine")
 
@@ -321,6 +322,19 @@ class FAQEngine:
                 "text": f"🖥 **Cockpit NexusPilot Pro:**\n{signal_relay.COCKPIT_URL}",
                 "menu_type": None if is_group else "main_consultant"
             }
+
+        # 5b. Hoi tin tuc / lich kinh te
+        if any(k in msg_lower for k in ["tin tức", "tin tuc", "lịch kinh tế", "lich kinh te",
+                                        "tin kinh tế", "tin sap ra", "tin sắp ra",
+                                        "tin đã ra", "tin da ra", "cpi", "nonfarm", "nfp", "lịch tin"]):
+            if any(k in msg_lower for k in ["sắp ra", "sap ra", "tuần tới", "7 ngày tới", "sắp tới"]):
+                return {"text": news_feed.format_upcoming(),
+                        "menu_type": None if is_group else "main_consultant"}
+            if any(k in msg_lower for k in ["đã ra", "da ra", "vừa ra", "tuần qua", "7 ngày qua"]):
+                return {"text": news_feed.format_past(),
+                        "menu_type": None if is_group else "main_consultant"}
+            return {"text": news_feed.format_latest(),
+                    "menu_type": None if is_group else "main_consultant"}
 
         # 6. Đối chiếu trong bảng FAQ đa ngôn ngữ
         faq_match = self.match_faq(user_message)
