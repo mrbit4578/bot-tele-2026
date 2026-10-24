@@ -24,6 +24,7 @@ from faq_engine import FAQEngine
 import signal_relay
 import news_feed
 import i18n
+import chart as chart_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -190,14 +191,20 @@ def save_env_config(updates: Dict[str, str]) -> Dict[str, str]:
 # CÁC HÀM GIAO TIẾP TELEGRAM HTTP API (BƯỚC 1, 6, 7, 8, 9)
 # ============================================================================
 
-def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: Optional[str] = None) -> Dict[str, Any]:
+def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: Optional[str] = None, files: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     bot_token = (token or get_env_config().get("BOT_TOKEN", "")).strip()
     if not bot_token or ":" not in bot_token:
         return {"ok": False, "description": "Chưa cấu hình BOT_TOKEN hợp lệ."}
 
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
     try:
-        resp = requests.post(url, json=payload or {}, timeout=10)
+        if files:
+            data = {}
+            for k, v in (payload or {}).items():
+                data[k] = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v
+            resp = requests.post(url, data=data, files=files, timeout=30)
+        else:
+            resp = requests.post(url, json=payload or {}, timeout=10)
         return resp.json()
     except Exception as e:
         logger.error(f"Telegram API error ({method}): {e}")
@@ -431,6 +438,32 @@ def generate_bot_reply(
                 "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
                 "reply_markup": None
             }
+        if callback_data == "signal_chart":
+            sent = signal_relay.recent_signals(limit=1, only_sent=True)
+            if not sent:
+                sent = signal_relay.recent_signals(limit=1, only_sent=True, include_demo=True)
+            if not sent:
+                return {"responded": True, "text": "📡 Chưa có tín hiệu nào được phát.", "reply_markup": None}
+            sig = sent[0]
+            png = None
+            candles = sig.get("candles") or []
+            if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
+                candles = chart_mod.fetch_btc_candles()
+            if len(candles) >= 5:
+                png = chart_mod.draw_chart(
+                    candles,
+                    {"entry": sig.get("entry_price"), "stop_loss": sig.get("stop_loss"),
+                     "tp1": sig.get("tp1"), "tp2": sig.get("tp2"), "tp3": sig.get("tp3")},
+                    sig["symbol"], sig["direction"], "Chi tiết tín hiệu", height=720)
+            out: Dict[str, Any] = {
+                "responded": True,
+                "text": signal_relay.detail_text(sig),
+                "reply_markup": {"inline_keyboard": [[{"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}]]},
+            }
+            if png:
+                import base64 as _b64
+                out["photo_b64"] = _b64.b64encode(png).decode()
+            return out
         if callback_data == "menu_signal":
             return {
                 "responded": True,
@@ -735,14 +768,26 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                 callback_data=data
             )
             if reply.get("responded") and reply.get("text"):
-                payload: Dict[str, Any] = {
-                    "chat_id": chat_id,
-                    "text": reply["text"],
-                    "parse_mode": "Markdown"
-                }
-                if reply.get("reply_markup"):
-                    payload["reply_markup"] = reply["reply_markup"]
-                telegram_api("sendMessage", payload)
+                if reply.get("photo_b64"):
+                    import base64 as _b64
+                    png_bytes = _b64.b64decode(reply["photo_b64"])
+                    photo_payload: Dict[str, Any] = {
+                        "chat_id": chat_id, "caption": reply["text"],
+                        "parse_mode": "Markdown",
+                    }
+                    if reply.get("reply_markup"):
+                        photo_payload["reply_markup"] = reply["reply_markup"]
+                    telegram_api("sendPhoto", photo_payload,
+                                 files={"photo": ("chart.png", png_bytes, "image/png")})
+                else:
+                    payload: Dict[str, Any] = {
+                        "chat_id": chat_id,
+                        "text": reply["text"],
+                        "parse_mode": "Markdown"
+                    }
+                    if reply.get("reply_markup"):
+                        payload["reply_markup"] = reply["reply_markup"]
+                    telegram_api("sendMessage", payload)
                 if reply.get("qr_url") and data == "pay_qr":
                     telegram_api("sendPhoto", {
                         "chat_id": chat_id,
@@ -1304,12 +1349,15 @@ def api_signal_relay():
     sig, err = signal_relay.validate_signal(payload)
     if err:
         return jsonify({"ok": False, "message": err}), 400
+    is_demo = bool(sig.get("demo"))
     score = sig.get("score")
-    if score is not None and score < signal_relay.min_score():
+    # Demo thiet ke (co X-Signal-Key hop le): bo qua nguong 80 + chong trung,
+    # nhung van gan nhan TEST ro rang va khong hien trong /tin_hieu.
+    if not is_demo and score is not None and score < signal_relay.min_score():
         signal_relay.record_signal(sig, sent=False, reason="below_threshold")
         return jsonify({"ok": True, "sent": False, "reason": "below_threshold",
                         "min_score": signal_relay.min_score()})
-    dup = signal_relay.find_duplicate(sig)
+    dup = None if is_demo else signal_relay.find_duplicate(sig)
     if dup:
         signal_relay.record_signal(sig, sent=False, reason="duplicate")
         return jsonify({"ok": True, "sent": False, "reason": "duplicate",
@@ -1318,16 +1366,45 @@ def api_signal_relay():
     if not chat_id:
         return jsonify({"ok": False,
                         "message": "Chua cau hinh SIGNAL_CHAT_ID hoac CHAT_ID de nhan tin hieu."}), 503
-    res = telegram_api("sendMessage", {
-        "chat_id": chat_id,
-        "text": signal_relay.format_signal_message(sig),
-        "parse_mode": "Markdown"
-    })
+    text = signal_relay.format_signal_message(sig)
+    keyboard = signal_relay.signal_keyboard(sig)
+    png = None
+    candles = sig.get("candles") or []
+    if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
+        candles = chart_mod.fetch_btc_candles()
+    if len(candles) >= 5:
+        png = chart_mod.draw_chart(
+            candles,
+            {"entry": sig.get("entry_price"), "stop_loss": sig.get("stop_loss"),
+             "tp1": sig.get("tp1"), "tp2": sig.get("tp2"), "tp3": sig.get("tp3")},
+            sig["symbol"], sig["direction"],
+            "CoinGecko BTC/USD 30m" if sig.get("symbol") == "BTCUSD" and not sig.get("candles") else sig["timeframe"])
+    res = {"ok": False}
+    if png:
+        if len(text) <= 1024:
+            res = telegram_api("sendPhoto", {
+                "chat_id": chat_id, "caption": text, "parse_mode": "Markdown",
+                "reply_markup": keyboard,
+            }, files={"photo": ("chart.png", png, "image/png")})
+        else:
+            short = text.split("\n```")[0]
+            res = telegram_api("sendPhoto", {
+                "chat_id": chat_id, "caption": short, "parse_mode": "Markdown",
+            }, files={"photo": ("chart.png", png, "image/png")})
+            if res.get("ok"):
+                res = telegram_api("sendMessage", {
+                    "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+                    "reply_markup": keyboard,
+                })
+    else:
+        res = telegram_api("sendMessage", {
+            "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+            "reply_markup": keyboard,
+        })
     if not res.get("ok"):
         # Fallback khong Markdown neu dinh dang gay loi
         res = telegram_api("sendMessage", {
-            "chat_id": chat_id,
-            "text": signal_relay.format_signal_message(sig)
+            "chat_id": chat_id, "text": text, "reply_markup": keyboard,
         })
     if not res.get("ok"):
         return jsonify({"ok": False,

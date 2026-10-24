@@ -106,10 +106,13 @@ def record_signal(sig: Dict[str, Any], sent: bool, reason: str = "") -> Dict[str
     return rec
 
 
-def recent_signals(limit: int = 10, only_sent: bool = False) -> List[Dict[str, Any]]:
+def recent_signals(limit: int = 10, only_sent: bool = False,
+                   include_demo: bool = False) -> List[Dict[str, Any]]:
     records = load_records()
     if only_sent:
         records = [r for r in records if r.get("_sent")]
+    if not include_demo:
+        records = [r for r in records if not r.get("demo")]
     return records[:limit]
 
 
@@ -158,7 +161,18 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
         "suggested_lot": _num(payload.get("suggested_lot", payload.get("lot"))),
         "rationale": str(payload.get("rationale", "")).strip()[:400],
         "source": str(payload.get("source", "cockpit")).strip()[:40],
+        "demo": bool(payload.get("demo", False)),
+        "change_24h": _num(payload.get("change_24h")),
+        "high_24h": _num(payload.get("high_24h")),
+        "low_24h": _num(payload.get("low_24h")),
+        "volume_24h": str(payload.get("volume_24h", "")).strip()[:30],
+        "chart_source": str(payload.get("chart_source", "")).strip()[:60],
     }
+    try:
+        import chart as _chart
+        sig["candles"] = _chart.normalize_candles(payload.get("candles"), cap=120)
+    except Exception:
+        sig["candles"] = []
     return sig, ""
 
 
@@ -171,7 +185,7 @@ def find_duplicate(sig: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     window = timedelta(minutes=dedupe_minutes())
     now = datetime.now(timezone.utc)
     for rec in load_records():
-        if not rec.get("_sent"):
+        if not rec.get("_sent") or rec.get("demo"):
             continue
         if dedupe_key(rec) != dedupe_key(sig):
             continue
@@ -194,33 +208,70 @@ def _fmt_price(value: Optional[float]) -> str:
     return f"{value:.4f}"
 
 
+def _pct(entry: float, level: float, direction: str) -> float:
+    """% cach Entry, quy uoc: SL luon am, TP luon duong."""
+    if direction == "BUY":
+        return (level - entry) / entry * 100
+    return (entry - level) / entry * 100
+
+
+def order_line(sig: Dict[str, Any]) -> str:
+    """Dong lenh 1 dong, copy-paste duoc ngay."""
+    parts = [sig["symbol"], sig["direction"], _fmt_price(sig.get("entry_price")),
+             "SL", _fmt_price(sig.get("stop_loss"))]
+    for k in ("tp1", "tp2", "tp3"):
+        if sig.get(k) is not None:
+            parts += [k.upper(), _fmt_price(sig[k])]
+    return " ".join(parts)
+
+
+def signal_keyboard(sig: Dict[str, Any]) -> Dict[str, Any]:
+    """Nut duoi tin hieu: Charts (xem chi tiet) | Chat (nick hay) | CHEP MA (copy lenh)."""
+    return {"inline_keyboard": [
+        [{"text": "📊 Charts", "callback_data": "signal_chart"},
+         {"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}],
+        [{"text": "📋 CHÉP MÃ", "copy_text": {"text": order_line(sig)}}],
+    ]}
+
+
 def format_signal_message(sig: Dict[str, Any]) -> str:
-    """Định dạng tin nhắn tín hiệu gửi lên Telegram (Markdown an toàn cơ bản)."""
-    arrow = "🟢" if sig["direction"] == "BUY" else "🔴"
-    tps = [f"TP1 {_fmt_price(sig.get('tp1'))}"]
-    if sig.get("tp2") is not None:
-        tps.append(f"TP2 {_fmt_price(sig['tp2'])}")
-    if sig.get("tp3") is not None:
-        tps.append(f"TP3 {_fmt_price(sig['tp3'])}")
-    lines = [
-        f"🚀 **TÍN HIỆU MỚI — {sig['symbol']} ({sig['timeframe']})**",
-        f"{arrow} **{sig['direction']}** @ {_fmt_price(sig.get('entry_price'))}",
-        f"🎯 {' · '.join(tps)}",
-        f"🛡 SL {_fmt_price(sig.get('stop_loss'))}",
-    ]
-    meta = []
-    if sig.get("score") is not None:
-        meta.append(f"Điểm {sig['score']:.0f}/100")
-    if sig.get("quality"):
-        meta.append(f"Chất lượng {sig['quality']}")
-    if sig.get("engine_name") or sig.get("engine"):
-        meta.append(f"Engine {sig.get('engine_name') or sig.get('engine')}")
+    """Bố cục kiểu kênh mẫu: headline + khối số liệu + dòng lệnh copy + miễn trừ."""
+    entry = sig.get("entry_price")
+    direction = sig["direction"]
+    heart = "💚" if direction == "BUY" else "❤️"
+    lines = []
+    if sig.get("demo"):
+        lines.append("🧪 **BẢN TEST THIẾT KẾ — KHÔNG PHẢI TÍN HIỆU THẬT**")
+        lines.append("Số liệu dưới đây chỉ minh họa bố cục, chưa đủ điều kiện phát thật (80/100).")
+    score_txt = f" · {sig['score']:.0f}/100 điểm" if sig.get("score") is not None else ""
+    engine_txt = f" · {sig['engine_name'] or sig['engine']}" if (sig.get("engine_name") or sig.get("engine")) else ""
+    lines.append(f"#{sig['symbol']} {heart} **{direction}**{score_txt}{engine_txt} ({sig['timeframe']})")
+    rows = [f"Entry   {_fmt_price(entry)}"]
+    sl = sig.get("stop_loss")
+    if sl is not None and entry:
+        rows.append(f"SL      {_fmt_price(sl)}  ({_pct(entry, sl, direction):+.2f}%)")
+    tp_defs = [("tp1", "50%"), ("tp2", "30%"), ("tp3", "20%")]
+    for key, share in tp_defs:
+        v = sig.get(key)
+        if v is not None and entry:
+            rows.append(f"{key.upper()} {share}  {_fmt_price(v)}  ({_pct(entry, v, direction):+.2f}%)")
+    lines.append("```\n" + "\n".join(rows) + "\n```")
+    lines.append(f"`{order_line(sig)}`")
+    stats = []
+    if sig.get("change_24h") is not None:
+        stats.append(f"24h {sig['change_24h']:+.2f}%")
+    if sig.get("high_24h") is not None:
+        stats.append(f"High {_fmt_price(sig['high_24h'])}")
+    if sig.get("low_24h") is not None:
+        stats.append(f"Low {_fmt_price(sig['low_24h'])}")
+    if sig.get("volume_24h"):
+        stats.append(f"Vol {sig['volume_24h']}")
+    if stats:
+        lines.append("📊 " + " · ".join(stats))
     if sig.get("suggested_lot") is not None:
-        meta.append(f"Lot gợi ý {sig['suggested_lot']:.2f}")
-    if meta:
-        lines.append("📊 " + " · ".join(meta))
+        lines.append(f"Lot gợi ý {sig['suggested_lot']:.2f} · Tối đa 0.02 theo guardrail")
     if sig.get("rationale"):
-        lines.append(f"📝 {sig['rationale']}")
+        lines.append(f"📝 {sig['rationale'][:160]}")
     vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
     lines.append(f"⏰ {vn_now.strftime('%d/%m/%Y %H:%M')} (giờ VN)")
     lines.append(
@@ -229,6 +280,30 @@ def format_signal_message(sig: Dict[str, Any]) -> str:
     )
     lines.append(f"🖥 Cockpit: {COCKPIT_URL}")
     return "\n".join(lines)
+
+
+def detail_text(sig: Dict[str, Any]) -> str:
+    """Bản chi tiết khi bấm Charts: thêm risk/reward, engine, lý do đầy đủ."""
+    base = format_signal_message(sig)
+    entry = sig.get("entry_price")
+    sl = sig.get("stop_loss")
+    extra = []
+    if entry and sl:
+        risk = abs(_pct(entry, sl, sig["direction"]))
+        rewards = []
+        for k in ("tp1", "tp2", "tp3"):
+            v = sig.get(k)
+            if v is not None:
+                rewards.append(abs(_pct(entry, v, sig["direction"])) / risk if risk else 0)
+        if rewards:
+            extra.append(f"📐 Rủi ro {risk:.2f}% · Tỉ lệ R: {' / '.join(f'{r:.2f}R' for r in rewards)}")
+    if sig.get("engine_name") or sig.get("engine"):
+        extra.append(f"🧠 Engine: {sig['engine_name'] or sig['engine']}")
+    if sig.get("quality"):
+        extra.append(f"🏅 Chất lượng: {sig['quality']}")
+    if extra:
+        base += "\n" + "\n".join(extra)
+    return base
 
 
 def latest_signal_text() -> str:
