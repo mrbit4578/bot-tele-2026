@@ -513,6 +513,51 @@ class DatabaseManager:
         self.save_local_db(db)
         return current
 
+    def get_user_lang(self, chat_id: str) -> Optional[str]:
+        """Ngôn ngữ đã chọn của user (VI/EN/RU/ZH) hoặc None nếu chưa chọn.
+
+        Ưu tiên bảng Supabase `user_prefs` (tồn tại qua restart Vercel);
+        dự phòng file local DATA_DIR/user_prefs.json.
+        """
+        if self.is_supabase_configured:
+            res = self._supabase_request(
+                "user_prefs", "GET",
+                query_params={"chat_id": f"eq.{chat_id}", "select": "lang"})
+            if isinstance(res, list) and res and res[0].get("lang"):
+                return str(res[0]["lang"]).upper()
+        try:
+            prefs_file = os.path.join(DATA_DIR, "user_prefs.json")
+            if os.path.exists(prefs_file):
+                with open(prefs_file, "r", encoding="utf-8") as f:
+                    return json.load(f).get(str(chat_id))
+        except Exception:
+            pass
+        return None
+
+    def set_user_lang(self, chat_id: str, lang: str) -> bool:
+        """Lưu ngôn ngữ user chọn. Trả True nếu đã lưu (Supabase hoặc local)."""
+        ok = False
+        if self.is_supabase_configured:
+            res = self._supabase_request(
+                "user_prefs", "POST",
+                payload=[{"chat_id": str(chat_id), "lang": lang}],
+                prefer="resolution=merge-duplicates")
+            ok = res is not None
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            prefs_file = os.path.join(DATA_DIR, "user_prefs.json")
+            data = {}
+            if os.path.exists(prefs_file):
+                with open(prefs_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            data[str(chat_id)] = lang
+            with open(prefs_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            ok = True
+        except Exception as e:
+            logger.warning(f"Lưu user_prefs local lỗi: {e}")
+        return ok
+
     def seed_supabase_from_local(self) -> Dict[str, Any]:
         """Đẩy toàn bộ dữ liệu mẫu từ Local lên 4 bảng Supabase."""
         if not self.is_supabase_configured:
@@ -580,6 +625,15 @@ CREATE TABLE IF NOT EXISTS public.customers (
     interested_in TEXT,
     last_message TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Bảng ngôn ngữ đã chọn của user (user_prefs) — lưu lựa chọn từ menu
+-- ngôn ngữ để bot trả lời đúng ngôn ngữ đó ở mọi lần sau (không bị ghi đè
+-- bởi cột language của bảng customers, vốn cập nhật theo từng tin nhắn).
+CREATE TABLE IF NOT EXISTS public.user_prefs (
+    chat_id TEXT PRIMARY KEY,
+    lang TEXT NOT NULL DEFAULT 'VI',
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -23,6 +23,7 @@ from database import DatabaseManager, generate_supabase_sql
 from faq_engine import FAQEngine
 import signal_relay
 import news_feed
+import i18n
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -229,7 +230,7 @@ RISK_TEXT = (
 )
 
 
-def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
+def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optional[Dict[str, Any]]:
     """
     Tạo bàn phím Inline Keyboard chuẩn theo Bước 7 và Bước 9.
     """
@@ -243,24 +244,24 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
         # Menu chinh NexusPilot Pro
         return {
             "inline_keyboard": [
-                [{"text": "📡 Tín hiệu mới nhất", "callback_data": "menu_signal"}],
-                [{"text": "🧠 3 Engine tín hiệu", "callback_data": "menu_engines"}],
-                [{"text": "🛡 Quản trị rủi ro", "callback_data": "menu_risk"}],
-                [{"text": "📰 Tin kinh tế", "callback_data": "menu_news"}],
-                [{"text": "🖥 Mở Cockpit NexusPilot", "url": signal_relay.COCKPIT_URL}],
-                [{"text": "📋 FAQ NexusPilot", "callback_data": "menu_faq"},
-                 {"text": "👤 Hỗ trợ", "callback_data": "menu_human_support"}],
-                [{"text": "📘 Fanpage MrBit Onchain", "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+                [{"text": i18n.t(lang, "btn_signal").replace(" >", ""), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines").replace(" >", ""), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk").replace(" >", ""), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_news"), "callback_data": "menu_news"}],
+                [{"text": i18n.t(lang, "btn_cockpit"), "url": signal_relay.COCKPIT_URL}],
+                [{"text": i18n.t(lang, "btn_faq"), "callback_data": "menu_faq"},
+                 {"text": i18n.t(lang, "btn_support_short"), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
     if menu_type == "news":
         return {
             "inline_keyboard": [
-                [{"text": "📰 Tin mới nhất (24h)", "callback_data": "news_latest"}],
-                [{"text": "⏩ Sắp ra — 7 ngày tới", "callback_data": "news_upcoming"}],
-                [{"text": "⏪ Đã ra — 7 ngày qua", "callback_data": "news_released"}],
-                [{"text": "⬅️ Menu chính", "callback_data": "menu_consultant"}]
+                [{"text": i18n.t(lang, "btn_latest"), "callback_data": "news_latest"}],
+                [{"text": i18n.t(lang, "btn_upcoming"), "callback_data": "news_upcoming"}],
+                [{"text": i18n.t(lang, "btn_released"), "callback_data": "news_released"}],
+                [{"text": i18n.t(lang, "btn_menu"), "callback_data": "menu_consultant"}]
             ]
         }
 
@@ -268,13 +269,13 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
         # Menu dieu huong NexusPilot Pro
         return {
             "inline_keyboard": [
-                [{"text": "📡 Tín hiệu mới nhất >", "callback_data": "menu_signal"}],
-                [{"text": "🧠 3 Engine tín hiệu >", "callback_data": "menu_engines"}],
-                [{"text": "🛡 Quản trị rủi ro >", "callback_data": "menu_risk"}],
-                [{"text": "📈 Các cặp đang theo dõi >", "callback_data": "menu_products"}],
-                [{"text": "🌐 FAQ đa ngôn ngữ (VI/EN/RU) >", "callback_data": "menu_faq_lang"}],
-                [{"text": "👤 Gặp tư vấn viên >", "callback_data": "menu_human_support"}],
-                [{"text": "📘 Fanpage MrBit Onchain", "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+                [{"text": i18n.t(lang, "btn_signal"), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines"), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk"), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_products"), "callback_data": "menu_products"}],
+                [{"text": i18n.t(lang, "btn_faq_lang"), "callback_data": "menu_faq_lang"}],
+                [{"text": i18n.t(lang, "btn_support"), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
@@ -324,7 +325,7 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
                 [{"text": "🇬🇧 EN — English support >", "callback_data": "faq_lang_EN"}],
                 [{"text": "🇷🇺 RU — Поддержка на русском >", "callback_data": "faq_lang_RU"}],
                 [{"text": "🇨🇳 ZH — 中文支持 >", "callback_data": "faq_lang_ZH"}],
-                [{"text": "⬅️ Quay lại", "callback_data": "menu_consultant"}]
+                [{"text": i18n.t(lang, "btn_back"), "callback_data": "menu_consultant"}]
             ]
         }
 
@@ -347,6 +348,9 @@ def generate_bot_reply(
     settings = db.get_settings()
     support_user = settings.get("support_username", "@phucanhmrt")
     shop_url = settings.get("shop_url", "https://shop.example.com")
+    # Ngon ngu da chon cua user (luu vinh vien qua Supabase user_prefs,
+    # du phong file local); mac dinh VI.
+    user_lang = i18n.normalize(db.get_user_lang(str(user_id)) or "VI")
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
@@ -354,62 +358,64 @@ def generate_bot_reply(
             return {
                 "responded": True,
                 "text": "📰 **TIN KINH TẾ FOREXFACTORY**\nChọn khoảng thời gian anh muốn xem:",
-                "reply_markup": build_inline_keyboard("news")
+                "reply_markup": build_inline_keyboard("news", user_lang)
             }
         if callback_data == "news_latest":
             return {
                 "responded": True,
                 "text": news_feed.format_latest(),
-                "reply_markup": build_inline_keyboard("news")
+                "reply_markup": build_inline_keyboard("news", user_lang)
             }
         if callback_data == "news_upcoming":
             return {
                 "responded": True,
                 "text": news_feed.format_upcoming(),
-                "reply_markup": build_inline_keyboard("news")
+                "reply_markup": build_inline_keyboard("news", user_lang)
             }
         if callback_data == "news_released":
             return {
                 "responded": True,
                 "text": news_feed.format_past(),
-                "reply_markup": build_inline_keyboard("news")
+                "reply_markup": build_inline_keyboard("news", user_lang)
             }
         if callback_data == "menu_signal":
             return {
                 "responded": True,
                 "text": signal_relay.latest_signal_text(),
-                "reply_markup": build_inline_keyboard("main_consultant")
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
             }
         if callback_data == "menu_engines":
             return {
                 "responded": True,
                 "text": ENGINES_TEXT,
-                "reply_markup": build_inline_keyboard("main_consultant")
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
             }
         if callback_data == "menu_risk":
             return {
                 "responded": True,
                 "text": RISK_TEXT,
-                "reply_markup": build_inline_keyboard("main_consultant")
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
             }
         if callback_data == "menu_faq":
             return {
                 "responded": True,
-                "text": faq_engine.format_faq_by_language("VI"),
-                "reply_markup": build_inline_keyboard("faq_lang")
+                "text": faq_engine.format_faq_by_language(user_lang),
+                "reply_markup": build_inline_keyboard("faq_lang", user_lang)
             }
         if callback_data == "menu_faq_lang":
             return {
                 "responded": True,
-                "text": "🌐 **CHỌN NGÔN NGỮ HỖ TRỢ (SELECT LANGUAGE):**",
-                "reply_markup": build_inline_keyboard("faq_lang")
+                "text": i18n.t(user_lang, "lang_title"),
+                "reply_markup": build_inline_keyboard("faq_lang", user_lang)
             }
         if callback_data.startswith("faq_lang_"):
-            lang = callback_data.replace("faq_lang_", "")
+            lang = i18n.normalize(callback_data.replace("faq_lang_", ""))
+            db.set_user_lang(str(user_id), lang)
+            user_lang = lang
             return {
                 "responded": True,
-                "text": faq_engine.format_faq_by_language(lang),
-                "reply_markup": build_inline_keyboard("faq_lang")
+                "text": i18n.t(lang, "lang_set") + "\n\n" + faq_engine.format_faq_by_language(lang),
+                "reply_markup": build_inline_keyboard("main_consultant", lang)
             }
         if callback_data == "menu_pricing":
             return {
@@ -476,19 +482,19 @@ def generate_bot_reply(
             return {
                 "responded": True,
                 "text": (
-                    f"👤 **KẾT NỐI TƯ VẤN VIÊN TRỰC TIẾP**\n\n"
-                    f"• Tư vấn viên hỗ trợ: {support_user}\n"
-                    f"• Website chính thức: {shop_url}\n"
-                    f"• Fanpage: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}\n"
-                    f"• Bạn hãy để lại Số điện thoại hoặc nội dung cần hỗ trợ, tư vấn viên sẽ phản hồi trong ít phút!"
+                    f"{i18n.t(user_lang, 'support_title')}\n\n"
+                    f"• {i18n.t(user_lang, 'support_advisor')}: {support_user}\n"
+                    f"• {i18n.t(user_lang, 'support_site')}: {shop_url}\n"
+                    f"• {i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}\n"
+                    f"• {i18n.t(user_lang, 'support_note')}"
                 ),
-                "reply_markup": build_inline_keyboard("main_consultant")
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
             }
         if callback_data == "menu_consultant":
             return {
                 "responded": True,
-                "text": "Bạn muốn tìm hiểu sản phẩm nào?",
-                "reply_markup": build_inline_keyboard("main_consultant")
+                "text": i18n.t(user_lang, "menu_prompt"),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
             }
 
     # 2. Nếu ở trong Nhóm (Bước 8), kiểm tra bộ lọc Keyword & Chống Spam trước
@@ -521,83 +527,64 @@ def generate_bot_reply(
     if cmd == "/start":
         return {
             "responded": True,
-            "text": (
-                "Xin chào! 👋\n"
-                "Tôi là bot tín hiệu của **NexusPilot Pro** — hệ thống cockpit & "
-                "signal engine giao dịch MT5.\n\n"
-                "📡 Tôi tự động gửi tín hiệu đạt chuẩn (điểm từ 80/100) ngay khi "
-                "hệ thống phát hiện.\n"
-                "Gõ /tin_hieu để xem tín hiệu gần nhất, hoặc chọn mục bên dưới:"
-            ),
-            "reply_markup": build_inline_keyboard("start_menu")
+            "text": i18n.t(user_lang, "welcome"),
+            "reply_markup": build_inline_keyboard("start_menu", user_lang)
         }
 
     if cmd in ("/tin_hieu", "/signal", "/tinhieu"):
         return {
             "responded": True,
             "text": signal_relay.latest_signal_text(),
-            "reply_markup": build_inline_keyboard("main_consultant")
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
         }
 
     if cmd in ("/tin_moi", "/tin", "/news"):
         return {
             "responded": True,
             "text": news_feed.format_latest(),
-            "reply_markup": build_inline_keyboard("news")
+            "reply_markup": build_inline_keyboard("news", user_lang)
         }
 
     if cmd in ("/tin_sap_ra", "/lich_sap_ra"):
         return {
             "responded": True,
             "text": news_feed.format_upcoming(),
-            "reply_markup": build_inline_keyboard("news")
+            "reply_markup": build_inline_keyboard("news", user_lang)
         }
 
     if cmd in ("/tin_da_ra", "/lich_da_ra"):
         return {
             "responded": True,
             "text": news_feed.format_past(),
-            "reply_markup": build_inline_keyboard("news")
+            "reply_markup": build_inline_keyboard("news", user_lang)
         }
 
     if cmd == "/engines":
         return {
             "responded": True,
             "text": ENGINES_TEXT,
-            "reply_markup": build_inline_keyboard("main_consultant")
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
         }
 
     if cmd == "/risk":
         return {
             "responded": True,
             "text": RISK_TEXT,
-            "reply_markup": build_inline_keyboard("main_consultant")
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
         }
 
     if cmd == "/cockpit":
         return {
             "responded": True,
-            "text": f"🖥 **Cockpit NexusPilot Pro:**\n{signal_relay.COCKPIT_URL}",
-            "reply_markup": build_inline_keyboard("start_menu")
+            "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
+            "reply_markup": build_inline_keyboard("start_menu", user_lang)
         }
 
     if cmd == "/help":
         return {
             "responded": True,
-            "text": (
-                "📖 **CÁC LỆNH CỦA BOT:**\n"
-                "/start — Menu chính\n"
-                "/tin_hieu — Tín hiệu đạt chuẩn gần nhất\n"
-                "/engines — Giới thiệu 3 engine tín hiệu\n"
-                "/risk — Quy tắc quản trị rủi ro\n"
-                "/cockpit — Mở web cockpit\n"
-                "/tin_moi — Tin kinh tế mới nhất (24h)\n"
-                "/tin_sap_ra — Lịch kinh tế 7 ngày tới\n"
-                "/tin_da_ra — Tin kinh tế đã ra 7 ngày qua\n"
-                "/faq — Câu hỏi thường gặp\n"
-                "/support — Gặp tư vấn viên"
-            ),
-            "reply_markup": build_inline_keyboard("start_menu")
+            "text": i18n.t(user_lang, "help"),
+            "reply_markup": build_inline_keyboard("start_menu", user_lang)
         }
 
     if cmd == "/ship":
@@ -605,14 +592,14 @@ def generate_bot_reply(
         return {
             "responded": True,
             "text": faq_engine.format_shipping_info(),
-            "reply_markup": None if is_group else build_inline_keyboard("main_consultant")
+            "reply_markup": None if is_group else build_inline_keyboard("main_consultant", user_lang)
         }
 
     if cmd == "/faq":
         return {
             "responded": True,
-            "text": faq_engine.format_faq_by_language("VI"),
-            "reply_markup": build_inline_keyboard("faq_lang")
+            "text": faq_engine.format_faq_by_language(user_lang),
+            "reply_markup": build_inline_keyboard("faq_lang", user_lang)
         }
 
     if cmd == "/price":
@@ -641,26 +628,26 @@ def generate_bot_reply(
     if cmd == "/lang":
         return {
             "responded": True,
-            "text": "🌐 Chọn ngôn ngữ hỗ trợ / Select support language / Выберите язык:",
-            "reply_markup": build_inline_keyboard("faq_lang")
+            "text": i18n.t(user_lang, "lang_title"),
+            "reply_markup": build_inline_keyboard("faq_lang", user_lang)
         }
 
     if cmd == "/support":
         return {
             "responded": True,
-            "text": (f"👤 Liên hệ tư vấn viên trực tiếp: {support_user}\n"
-                    f"Hoặc truy cập: {shop_url}\n"
-                    f"Fanpage: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}"),
-            "reply_markup": build_inline_keyboard("main_consultant")
+            "text": (f"{i18n.t(user_lang, 'support_short')}: {support_user}\n"
+                    f"{i18n.t(user_lang, 'support_or')}: {shop_url}\n"
+                    f"{i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}"),
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
         }
 
     # 4. Xử lý câu hỏi tự nhiên qua FAQ Engine & AI Consultant (Bước 7 & Bước 8)
-    ai_res = faq_engine.generate_ai_response(clean_text, is_group=is_group)
+    ai_res = faq_engine.generate_ai_response(clean_text, is_group=is_group, pref_lang=user_lang)
     return {
         "responded": True,
         "text": ai_res.get("text"),
         "qr_url": ai_res.get("qr_url"),
-        "reply_markup": build_inline_keyboard(ai_res.get("menu_type"))
+        "reply_markup": build_inline_keyboard(ai_res.get("menu_type"), user_lang)
     }
 
 

@@ -15,6 +15,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from database import DatabaseManager
 import signal_relay
 import news_feed
+import i18n
 
 logger = logging.getLogger("TelegramBot.FAQEngine")
 
@@ -267,7 +268,7 @@ class FAQEngine:
             lines.append(f"❓ **Q{idx}: {f.get('question')}**\n💡 {f.get('answer')}\n")
         return "\n".join(lines)
 
-    def generate_ai_response(self, user_message: str, is_group: bool = False) -> Dict[str, Any]:
+    def generate_ai_response(self, user_message: str, is_group: bool = False, pref_lang: Optional[str] = None) -> Dict[str, Any]:
         """
         Tạo câu trả lời thông minh kết hợp FAQ, Kịch bản Tư vấn AI (Bước 7) và Kịch bản Nhóm (Bước 8).
         Trả về dict: {'text': ..., 'reply_markup': ...}
@@ -356,25 +357,10 @@ class FAQEngine:
                 return {"text": ai_reply, "menu_type": "main_consultant"}
 
         # 8. Phản hồi mặc định thân thiện kèm menu điều hướng
-        lang = self.detect_language(user_message)
-        if lang == "EN":
-            return {
-                "text": "Hello! How can I help you today? Please choose an option below:",
-                "menu_type": "main_consultant"
-            }
-        elif lang == "RU":
-            return {
-                "text": "Здравствуйте! Чем я могу вам помочь? Выберите нужный раздел ниже:",
-                "menu_type": "main_consultant"
-            }
-        elif lang == "ZH":
-            return {
-                "text": "您好！需要什么帮助？请在下方选择一个选项：",
-                "menu_type": "main_consultant"
-            }
-
+        # (ưu tiên ngôn ngữ user đã chọn, sau đó mới đoán từ nội dung tin nhắn)
+        lang = i18n.normalize(pref_lang) if pref_lang else self.detect_language(user_message)
         return {
-            "text": "Bạn muốn xem tín hiệu mới nhất, tìm hiểu 3 engine hay quy tắc quản trị rủi ro? Hãy chọn một mục bên dưới nhé! ✨",
+            "text": i18n.t(lang, "default_reply"),
             "menu_type": "main_consultant"
         }
 
