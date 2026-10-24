@@ -635,16 +635,20 @@
       const send = (key) => {
         const opts = Object.assign({}, options || {});
         const headers = new Headers((options && options.headers) || {});
-        if (key) headers.set("X-Admin-Key", key);
+        const k = (key || "").trim();
+        if (k) headers.set("X-Admin-Key", k);
         opts.headers = headers;
         return _fetch(url, opts);
       };
       let res = await send(sessionStorage.getItem("ADMIN_KEY") || "");
       if (res.status === 401) {
         const key = window.prompt("Dashboard dang khoa. Nhap ADMIN_KEY de tiep tuc:");
-        if (key) {
-          sessionStorage.setItem("ADMIN_KEY", key);
-          res = await send(key);
+        if (key && key.trim()) {
+          sessionStorage.setItem("ADMIN_KEY", key.trim());
+          res = await send(key.trim());
+        }
+        if (res.status === 401) {
+          sessionStorage.removeItem("ADMIN_KEY");
         }
       }
       return res;
@@ -1305,7 +1309,7 @@
 
     function loginAdmin() {
       const k = window.prompt("Nhập ADMIN_KEY để xem danh sách người dùng:");
-      if (k) { sessionStorage.setItem("ADMIN_KEY", k); loadUsers(); }
+      if (k && k.trim()) { sessionStorage.setItem("ADMIN_KEY", k.trim()); loadUsers(); }
     }
 
     function fmtVN(v) {
