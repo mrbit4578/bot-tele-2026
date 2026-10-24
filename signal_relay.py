@@ -167,7 +167,25 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
         "low_24h": _num(payload.get("low_24h")),
         "volume_24h": str(payload.get("volume_24h", "")).strip()[:30],
         "chart_source": str(payload.get("chart_source", "")).strip()[:60],
+        "session": str(payload.get("session", "")).strip()[:60],
+        "radar_note": str(payload.get("radar_note", "")).strip()[:300],
+        "data_source": str(payload.get("data_source", "")).strip()[:60],
+        "last_price": _num(payload.get("last_price", payload.get("price"))),
+        "spread": str(payload.get("spread", "")).strip()[:30],
     }
+    bd = []
+    if isinstance(payload.get("score_breakdown"), list):
+        for f in payload["score_breakdown"][:10]:
+            if not isinstance(f, dict):
+                continue
+            pts = _num(f.get("points"))
+            mx = _num(f.get("maxPoints", f.get("max")))
+            if pts is None or mx is None:
+                continue
+            bd.append({"label": str(f.get("label", ""))[:40],
+                       "points": pts, "maxPoints": mx,
+                       "detail": str(f.get("detail", ""))[:120]})
+    sig["score_breakdown"] = bd
     try:
         import chart as _chart
         sig["candles"] = _chart.normalize_candles(payload.get("candles"), cap=120)
@@ -304,6 +322,46 @@ def detail_text(sig: Dict[str, Any]) -> str:
     if extra:
         base += "\n" + "\n".join(extra)
     return base
+
+
+def detail_view(sig: Dict[str, Any]) -> str:
+    """Bản CHI TIẾT khi bấm Charts — KHÁC hẳn tin gốc: không lặp lại khối số liệu,
+    mà mở thành phần điểm, cảnh báo radar, phiên, nguồn + độ tươi dữ liệu."""
+    direction = sig["direction"]
+    heart = "💚" if direction == "BUY" else "❤️"
+    lines = [f"🔍 **CHI TIẾT TÍN HIỆU — #{sig['symbol']} {heart} {direction} ({sig['timeframe']})**"]
+    score_txt = f"{sig['score']:.0f}/100" if sig.get("score") is not None else "?"
+    lines.append(f"Điểm: **{score_txt}**" + (f" · Chất lượng: {sig['quality']}" if sig.get("quality") else ""))
+    lines.append(f"Engine: {sig['engine_name'] or sig['engine'] or '-'}")
+    bd = sig.get("score_breakdown") or []
+    if bd:
+        lines.append("━━━ **Thành phần điểm** ━━━")
+        for f in bd:
+            mark = "✓" if f["points"] >= f["maxPoints"] * 0.6 else "○"
+            line = f"{mark} {f['label']} — {f['points']:.0f}/{f['maxPoints']:.0f}"
+            if f.get("detail"):
+                line += f" · {f['detail']}"
+            lines.append(line)
+    else:
+        lines.append("_(Chi tiết điểm thành phần sẽ hiện khi Cockpit gửi kèm breakdown — xem bản vá v2.)_")
+    entry = sig.get("entry_price")
+    sl = sig.get("stop_loss")
+    if entry and sl:
+        risk = abs(_pct(entry, sl, direction))
+        tps = [sig.get(k) for k in ("tp1", "tp2", "tp3") if sig.get(k) is not None]
+        rr = " / ".join(f"{abs(_pct(entry, t, direction)) / risk:.2f}R" for t in tps) if risk else "-"
+        lines.append(f"📐 Rủi ro {risk:.2f}% · Tỉ lệ R: {rr}")
+    if sig.get("session"):
+        lines.append(f"🕐 Phiên: {sig['session']}")
+    if sig.get("radar_note"):
+        lines.append(f"⚠️ Radar: {sig['radar_note'][:200]}")
+    if sig.get("rationale"):
+        lines.append(f"📝 {sig['rationale'][:200]}")
+    src = sig.get("data_source") or sig.get("source") or "NexusPilot"
+    vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
+    lines.append(f"Nguồn: {src} · Xem lúc {vn_now.strftime('%H:%M %d/%m')} (giờ VN)")
+    lines.append("⚠️ Tham khảo, không phải lời khuyên đầu tư.")
+    return "\n".join(lines)
 
 
 def latest_signal_text() -> str:

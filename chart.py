@@ -159,3 +159,70 @@ def draw_chart(candles: List[Dict[str, float]], levels: Dict[str, Optional[float
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def draw_detail_card(sig: Dict[str, Any], breakdown: List[Dict[str, Any]],
+                     width: int = 1080) -> Optional[bytes]:
+    """Thẻ chi tiết kiểu Cockpit: điểm lớn, engine, từng thành phần điểm + thanh tỉ lệ,
+    rủi ro/lợi nhuận, nguồn + thời gian. Dữ liệu lấy từ tín hiệu thật, không bịa."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    try:
+        font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 64)
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+        font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+    except Exception:
+        font_big = font = font_sm = ImageFont.load_default()
+    rows = breakdown[:6]
+    row_h = 92
+    header_h = 190
+    footer_h = 150
+    h = header_h + row_h * max(1, len(rows)) + footer_h
+    img = Image.new("RGB", (width, h), (17, 24, 39))
+    d = ImageDraw.Draw(img)
+    direction = sig.get("direction", "")
+    col = UP if direction == "BUY" else DOWN
+    arrow = "▲" if direction == "BUY" else "▼"
+    d.rectangle([0, 0, width, 8], fill=col)
+    d.text((40, 30), f"{sig.get('symbol', '')}  {arrow} {direction}", fill=TEXT, font=font)
+    score = sig.get("score")
+    score_txt = f"{score:.0f}/100" if score is not None else "-"
+    d.text((40, 80), score_txt, fill=col, font=font_big)
+    quality = sig.get("quality") or ""
+    d.text((330, 105), quality, fill=(150, 165, 185), font=font)
+    d.text((40, 150), f"Engine: {sig.get('engine_name') or sig.get('engine') or '-'}  ·  {sig.get('timeframe', '')}",
+           fill=(150, 165, 185), font=font_sm)
+    y = header_h
+    for f in rows:
+        label = str(f.get("label", ""))[:34]
+        pts = f.get("points") or 0
+        mx = f.get("maxPoints") or f.get("max") or 0
+        d.text((40, y + 8), label, fill=TEXT, font=font)
+        d.text((width - 160, y + 8), f"{pts}/{mx}", fill=TEXT, font=font)
+        bx0, bx1, by = 40, width - 40, y + 52
+        d.rectangle([bx0, by, bx1, by + 14], fill=(30, 41, 59))
+        if mx:
+            d.rectangle([bx0, by, bx0 + (bx1 - bx0) * min(1.0, pts / mx), by + 14],
+                        fill=UP if pts >= mx * 0.6 else ENTRY_C)
+        detail = str(f.get("detail", ""))[:70]
+        if detail:
+            d.text((40, y + 68), detail, fill=(150, 165, 185), font=font_sm)
+        y += row_h
+    entry = sig.get("entry_price")
+    sl = sig.get("stop_loss")
+    tps = [sig.get(k) for k in ("tp1", "tp2", "tp3") if sig.get(k) is not None]
+    if entry and sl:
+        def pct(level: float) -> float:
+            return (level - entry) / entry * 100 if direction == "BUY" else (entry - level) / entry * 100
+        risk = abs(pct(sl))
+        rr = " / ".join(f"{abs(pct(t)) / risk:.2f}R" for t in tps) if risk else "-"
+        d.text((40, y + 10), f"Rủi ro {risk:.2f}%  ·  Tỉ lệ R: {rr}", fill=TEXT, font=font)
+    src = sig.get("data_source") or sig.get("source") or "NexusPilot"
+    d.text((40, y + 58), f"Nguồn: {src}", fill=(150, 165, 185), font=font_sm)
+    d.text((40, y + 96), "NexusPilot Pro — tham khảo, không phải lời khuyên đầu tư.",
+           fill=(150, 165, 185), font=font_sm)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()

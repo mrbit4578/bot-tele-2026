@@ -445,7 +445,12 @@ def generate_bot_reply(
             if not sent:
                 return {"responded": True, "text": "📡 Chưa có tín hiệu nào được phát.", "reply_markup": None}
             sig = sent[0]
-            png = None
+            import base64 as _b64
+            photos = []
+            card = chart_mod.draw_detail_card(sig, sig.get("score_breakdown") or [])
+            if card:
+                photos.append({"b64": _b64.b64encode(card).decode(),
+                               "caption": signal_relay.detail_view(sig)})
             candles = sig.get("candles") or []
             if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
                 candles = chart_mod.fetch_btc_candles()
@@ -454,15 +459,17 @@ def generate_bot_reply(
                     candles,
                     {"entry": sig.get("entry_price"), "stop_loss": sig.get("stop_loss"),
                      "tp1": sig.get("tp1"), "tp2": sig.get("tp2"), "tp3": sig.get("tp3")},
-                    sig["symbol"], sig["direction"], "Chi tiết tín hiệu", height=720)
+                    sig["symbol"], sig["direction"], "Chart chi tiết", height=720)
+                if png:
+                    photos.append({"b64": _b64.b64encode(png).decode(),
+                                   "caption": f"📊 Chart {sig['symbol']} {sig['timeframe']} — đường Entry/SL/TP"})
             out: Dict[str, Any] = {
                 "responded": True,
-                "text": signal_relay.detail_text(sig),
+                "text": signal_relay.detail_view(sig),
                 "reply_markup": {"inline_keyboard": [[{"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}]]},
             }
-            if png:
-                import base64 as _b64
-                out["photo_b64"] = _b64.b64encode(png).decode()
+            if photos:
+                out["photos"] = photos
             return out
         if callback_data == "menu_signal":
             return {
@@ -768,7 +775,18 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                 callback_data=data
             )
             if reply.get("responded") and reply.get("text"):
-                if reply.get("photo_b64"):
+                if reply.get("photos"):
+                    for _i, _ph in enumerate(reply["photos"]):
+                        import base64 as _b64
+                        _pb: Dict[str, Any] = {
+                            "chat_id": chat_id, "caption": _ph.get("caption") or reply["text"],
+                            "parse_mode": "Markdown",
+                        }
+                        if _i == 0 and reply.get("reply_markup"):
+                            _pb["reply_markup"] = reply["reply_markup"]
+                        telegram_api("sendPhoto", _pb,
+                                     files={"photo": ("chart.png", _b64.b64decode(_ph["b64"]), "image/png")})
+                elif reply.get("photo_b64"):
                     import base64 as _b64
                     png_bytes = _b64.b64decode(reply["photo_b64"])
                     photo_payload: Dict[str, Any] = {
