@@ -230,6 +230,48 @@ RISK_TEXT = (
 )
 
 
+def _reply_label(lang: str, key: str) -> str:
+    """Nhan nut ban phim co dinh (bo dau ' >' cua ban inline)."""
+    return i18n.t(lang, key).replace(" >", "")
+
+
+def build_reply_keyboard(lang: str = "VI") -> Dict[str, Any]:
+    """Ban phim tra loi co dinh kieu KIRO BOT: luoi 2 cot, luon hien duoi khung chat."""
+    return {
+        "keyboard": [
+            [{"text": _reply_label(lang, "btn_signal")}, {"text": _reply_label(lang, "btn_engines")}],
+            [{"text": _reply_label(lang, "btn_risk")}, {"text": _reply_label(lang, "btn_products")}],
+            [{"text": _reply_label(lang, "btn_news")}, {"text": _reply_label(lang, "btn_lang_short")}],
+            [{"text": _reply_label(lang, "btn_faq")}, {"text": _reply_label(lang, "btn_support_short")}],
+            [{"text": _reply_label(lang, "btn_cockpit")}],
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+        "is_persistent": True,
+    }
+
+
+def label_to_callback(text: str) -> Optional[str]:
+    """Anh xa nhan nut ban phim co dinh (ca 4 ngon ngu) sang callback tuong ung."""
+    mapping = {
+        "btn_signal": "menu_signal",
+        "btn_engines": "menu_engines",
+        "btn_risk": "menu_risk",
+        "btn_products": "menu_products",
+        "btn_news": "menu_news",
+        "btn_lang_short": "menu_faq_lang",
+        "btn_faq": "menu_faq",
+        "btn_support_short": "menu_human_support",
+        "btn_support": "menu_human_support",
+        "btn_cockpit": "cockpit_text",
+    }
+    for lang in i18n.SUPPORTED:
+        for key, cb in mapping.items():
+            if text == _reply_label(lang, key):
+                return cb
+    return None
+
+
 def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optional[Dict[str, Any]]:
     """
     Tạo bàn phím Inline Keyboard chuẩn theo Bước 7 và Bước 9.
@@ -351,6 +393,11 @@ def generate_bot_reply(
     # Ngon ngu da chon cua user (luu vinh vien qua Supabase user_prefs,
     # du phong file local); mac dinh VI.
     user_lang = i18n.normalize(db.get_user_lang(str(user_id)) or "VI")
+    # Bam nut ban phim co dinh -> chuyen thanh callback tuong ung
+    if not callback_data and text:
+        mapped = label_to_callback(text.strip())
+        if mapped:
+            callback_data = mapped
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
@@ -377,6 +424,12 @@ def generate_bot_reply(
                 "responded": True,
                 "text": news_feed.format_past(),
                 "reply_markup": build_inline_keyboard("news", user_lang)
+            }
+        if callback_data == "cockpit_text":
+            return {
+                "responded": True,
+                "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
+                "reply_markup": None
             }
         if callback_data == "menu_signal":
             return {
@@ -415,7 +468,7 @@ def generate_bot_reply(
             return {
                 "responded": True,
                 "text": i18n.t(lang, "lang_set") + "\n\n" + faq_engine.format_faq_by_language(lang),
-                "reply_markup": build_inline_keyboard("main_consultant", lang)
+                "reply_markup": build_reply_keyboard(lang)
             }
         if callback_data == "menu_pricing":
             return {
@@ -527,8 +580,12 @@ def generate_bot_reply(
     if cmd == "/start":
         return {
             "responded": True,
-            "text": i18n.t(user_lang, "welcome"),
-            "reply_markup": build_inline_keyboard("start_menu", user_lang)
+            "text": (
+                (i18n.t(user_lang, "greet").format(name=full_name) + "\n"
+                 + i18n.t(user_lang, "welcome").split("\n", 1)[1])
+                if full_name else i18n.t(user_lang, "welcome")
+            ),
+            "reply_markup": build_reply_keyboard(user_lang)
         }
 
     if cmd in ("/tin_hieu", "/signal", "/tinhieu"):
