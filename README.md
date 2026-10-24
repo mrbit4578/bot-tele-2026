@@ -53,6 +53,21 @@ Hệ thống tự động hóa trọn gói quy trình khởi tạo, cấu hình,
 | Log khởi động báo "đã kết nối/đang chạy" dù chưa cấu hình | Log khởi động trung thực theo trạng thái thật |
 | GitHub token ở Bước 4 có thể lộ qua log lệnh git | Tự che token trong mọi log trả về của Bước 4 |
 
+## 📡 Chế độ bot tín hiệu NexusPilot Pro
+
+Từ 24/10/2026 bot được cấu trúc lại phục vụ dự án NexusPilot Pro:
+
+- **Cầu nối tín hiệu**: Cockpit gửi tín hiệu về `POST /api/signal-relay` với
+  header `X-Signal-Key` (biến `SIGNAL_KEY` đặt trên Vercel). Bot chỉ phát tín
+  hiệu có điểm từ `SIGNAL_MIN_SCORE` (mặc định 80/100), chống trùng 30 phút,
+  gửi tới `SIGNAL_CHAT_ID` (hoặc `CHAT_ID` nếu để trống) kèm miễn trừ trách nhiệm.
+- **Lệnh bot**: `/start`, `/tin_hieu`, `/engines`, `/risk`, `/cockpit`,
+  `/faq`, `/support`, `/help`.
+- **Nội dung mẫu** trong `data/bot_database.json` là dữ liệu NexusPilot
+  (5 cặp theo dõi, cấp chất lượng tín hiệu, FAQ về dự án). Đẩy lên Supabase
+  bằng nút Auto-Seed ở Bước 3 của Dashboard sau khi đã chạy SQL tạo bảng.
+- Lịch sử tín hiệu đã nhận: `GET /api/signals` (cần ADMIN_KEY).
+
 ## ⚠️ An toàn thông tin
 
 - **Không bao giờ commit file `.env`** (đã có trong `.gitignore`). File zip dự án từng chứa `BOT_TOKEN` và `GEMINI_API_KEY` dạng thật — nếu đã từng gửi zip/file đó cho người khác, hãy thu hồi token bot qua @BotFather (`/revoke`) và tạo khóa Gemini mới.

@@ -1,259 +1,269 @@
 {
   "products": [
     {
-      "id": "prod_a",
-      "name": "Sản phẩm A - Gói AI Pro",
-      "code": "SP_A",
-      "category": "Phần mềm AI",
-      "description": "Giải pháp Chatbot AI tự động hóa chăm sóc khách hàng 24/7 đa kênh.",
+      "id": "prod_xauusd",
+      "name": "XAUUSD — Vàng / USD",
+      "code": "XAUUSD",
+      "category": "Kim loại quý",
+      "description": "Cặp chủ lực của NexusPilot. Biến động mạnh theo tin vĩ mô Mỹ, phù hợp cả 3 engine, ưu tiên phiên London & New York.",
       "in_stock": true,
-      "stock_qty": 150,
-      "order_url": "https://shop.example.com/san-pham-a",
+      "stock_qty": 0,
+      "order_url": "https://mt5-mrbit-2026-v2.onrender.com/",
       "features": [
-        "Tự động trả lời 24/7",
-        "Đa ngôn ngữ VI/EN/RU",
-        "Tích hợp nhóm Telegram"
+        "Engine ưu tiên: SMC ICT Alpha & Trend Ribbon Pro",
+        "Khung chính: M15 / H1",
+        "Lưu ý tin CPI, FOMC, NFP"
       ]
     },
     {
-      "id": "prod_b",
-      "name": "Sản phẩm B - Gói Enterprise",
-      "code": "SP_B",
-      "category": "Giải pháp Doanh nghiệp",
-      "description": "Hệ thống Bot AI cao cấp tích hợp Supabase, CRM và cổng thanh toán quốc tế.",
+      "id": "prod_eurusd",
+      "name": "EURUSD — Euro / USD",
+      "code": "EURUSD",
+      "category": "Forex Major",
+      "description": "Cặp thanh khoản cao nhất thị trường, spread thấp, xu hướng rõ — phù hợp Trend Ribbon Pro.",
       "in_stock": true,
-      "stock_qty": 85,
-      "order_url": "https://shop.example.com/san-pham-b",
+      "stock_qty": 0,
+      "order_url": "https://mt5-mrbit-2026-v2.onrender.com/",
       "features": [
-        "Lưu trữ Supabase tập trung",
-        "Thanh toán PayPal & USDT",
-        "Chống spam nhóm thông minh"
+        "Engine ưu tiên: Trend Ribbon Pro",
+        "Khung chính: M15 / H1",
+        "Spread thấp, ít trượt giá"
       ]
     },
     {
-      "id": "prod_c",
-      "name": "Sản phẩm C - Thiết bị Smart Box",
-      "code": "SP_C",
-      "category": "Phần cứng",
-      "description": "Thiết bị phần cứng thông minh kết nối hệ thống điều khiển qua Telegram.",
+      "id": "prod_gbpusd",
+      "name": "GBPUSD — Bảng Anh / USD",
+      "code": "GBPUSD",
+      "category": "Forex Major",
+      "description": "Biến động mạnh hơn EURUSD, hay quét thanh khoản đầu phiên London — đất diễn của SMC ICT Alpha.",
       "in_stock": true,
-      "stock_qty": 42,
-      "order_url": "https://shop.example.com/san-pham-c",
+      "stock_qty": 0,
+      "order_url": "https://mt5-mrbit-2026-v2.onrender.com/",
       "features": [
-        "Bảo hành 12 tháng",
-        "Giao hàng toàn quốc",
-        "Hỗ trợ kỹ thuật 1-1"
+        "Engine ưu tiên: SMC ICT Alpha",
+        "Khung chính: M15",
+        "Cẩn trọng giờ mở cửa London"
+      ]
+    },
+    {
+      "id": "prod_usdjpy",
+      "name": "USDJPY — USD / Yên Nhật",
+      "code": "USDJPY",
+      "category": "Forex Major",
+      "description": "Cặp trú ẩn, phản ứng mạnh với lợi suất Mỹ và tin BOJ. Mean Reversion Sweep hoạt động tốt ở vùng quá mua/quá bán.",
+      "in_stock": true,
+      "stock_qty": 0,
+      "order_url": "https://mt5-mrbit-2026-v2.onrender.com/",
+      "features": [
+        "Engine ưu tiên: Mean Reversion Sweep",
+        "Khung chính: M15 / H1",
+        "Lưu ý can thiệp tỷ giá của BOJ"
+      ]
+    },
+    {
+      "id": "prod_btcusd",
+      "name": "BTCUSD — Bitcoin / USD",
+      "code": "BTCUSD",
+      "category": "Crypto",
+      "description": "Giao dịch 24/7, biên độ lớn. Chỉ nhận tín hiệu điểm cao và lot nhỏ vì biến động mạnh.",
+      "in_stock": true,
+      "stock_qty": 0,
+      "order_url": "https://mt5-mrbit-2026-v2.onrender.com/",
+      "features": [
+        "Cả 3 engine đều quét",
+        "Khung chính: M15",
+        "Rủi ro cao — giảm khối lượng"
       ]
     }
   ],
   "pricing": [
     {
-      "id": "price_1",
-      "product_id": "prod_a",
-      "name": "Sản phẩm A",
-      "plan": "Gói Cơ Bản (1 Tháng)",
-      "price_vnd": "490.000đ",
-      "price_usd": "$19.99",
-      "price_usdt": "20 USDT",
-      "details": "Đầy đủ tính năng tư vấn tự động, FAQ đa ngôn ngữ, hỗ trợ 1 nhóm Telegram."
+      "id": "grade_q1",
+      "product_id": "prod_xauusd",
+      "name": "Tín hiệu hạng Q1",
+      "plan": "Chất lượng cao nhất",
+      "price_vnd": "",
+      "price_usd": "",
+      "price_usdt": "",
+      "details": "Điểm tổng hợp cao nhất, đa yếu tố cùng xác nhận (cấu trúc + động lượng + phiên). Đây là nhóm tín hiệu được ưu tiên nhất khi bot phát tự động."
     },
     {
-      "id": "price_2",
-      "product_id": "prod_b",
-      "name": "Sản phẩm B",
-      "plan": "Gói Chuyên Nghiệp (1 Năm)",
-      "price_vnd": "2.990.000đ",
-      "price_usd": "$119.99",
-      "price_usdt": "120 USDT",
-      "details": "Không giới hạn nhóm, tích hợp Supabase, cổng thanh toán PayPal & USDT, ưu tiên hỗ trợ VIP."
+      "id": "grade_threshold",
+      "product_id": "prod_xauusd",
+      "name": "Ngưỡng phát tín hiệu 80/100",
+      "plan": "Bộ lọc chất lượng",
+      "price_vnd": "",
+      "price_usd": "",
+      "price_usdt": "",
+      "details": "Bot CHỈ gửi tín hiệu có điểm từ 80/100 trở lên. Tín hiệu dưới ngưỡng vẫn hiển thị trên Cockpit để tham khảo nhưng không phát lên Telegram, tránh nhiễu và FOMO."
     },
     {
-      "id": "price_3",
-      "product_id": "prod_c",
-      "name": "Sản phẩm C",
-      "plan": "Bộ Thiết Bị Tiêu Chuẩn",
-      "price_vnd": "1.250.000đ",
-      "price_usd": "$49.99",
-      "price_usdt": "50 USDT",
-      "details": "Tặng kèm 3 tháng sử dụng Bot AI Pro miễn phí. Phí ship nội thành 20.000đ, tỉnh 30.000đ."
+      "id": "plan_tp",
+      "product_id": "prod_xauusd",
+      "name": "Kế hoạch chốt lời 50 / 30 / 20",
+      "plan": "Chia 3 vị thế",
+      "price_vnd": "",
+      "price_usd": "",
+      "price_usdt": "",
+      "details": "Mỗi lệnh chia 3 phần: TP1 chốt 50%, TP2 chốt 30%, TP3 chốt 20%. Chạm TP1 sẽ dời Stop Loss về điểm hòa vốn (Break-Even) để bảo toàn vốn."
+    },
+    {
+      "id": "plan_risk",
+      "product_id": "prod_xauusd",
+      "name": "Khung rủi ro mỗi lệnh",
+      "plan": "Bảo toàn vốn trước",
+      "price_vnd": "",
+      "price_usd": "",
+      "price_usdt": "",
+      "details": "Lot tối đa 0.02, rủi ro khoảng 1% tài khoản mỗi lệnh, tối đa 3 vị thế cùng lúc, có Daily Drawdown Guard chặn lỗ ngày."
     }
   ],
   "faqs": [
     {
-      "id": "faq_ship_vi",
+      "id": "faq_nx_1",
       "lang": "VI",
-      "question": "Phí giao hàng tính như thế nào?",
+      "question": "NexusPilot Pro là gì?",
       "keywords": [
-        "phí giao hàng",
-        "giao hàng",
-        "tiền ship",
-        "phí ship",
-        "vận chuyển",
-        "ship"
+        "nexuspilot",
+        "dự án",
+        "là gì",
+        "hệ thống",
+        "giới thiệu"
       ],
-      "answer": "Dạ, phí giao hàng tùy khu vực: Nội thành 20.000đ, tỉnh 30.000đ. Bạn có thể dùng /ship để tra cứu chi tiết nhé!"
+      "answer": "NexusPilot Pro là hệ thống cockpit & signal engine hỗ trợ giao dịch MT5 do MrBit phát triển. Hệ thống quét 5 cặp (XAUUSD, EURUSD, GBPUSD, USDJPY, BTCUSD) bằng 3 engine tín hiệu, chấm điểm minh bạch và chỉ phát tín hiệu đạt chuẩn. Xem trực tiếp tại: https://mt5-mrbit-2026-v2.onrender.com/"
     },
     {
-      "id": "faq_stock_vi",
+      "id": "faq_nx_2",
       "lang": "VI",
-      "question": "Sản phẩm này còn hàng không ạ?",
+      "question": "Hệ thống có những engine tín hiệu nào?",
       "keywords": [
-        "còn hàng",
-        "hết hàng",
-        "tồn kho",
-        "mua ngay",
-        "đặt hàng"
+        "engine",
+        "smc",
+        "ict",
+        "trend",
+        "mean reversion",
+        "thuật toán"
       ],
-      "answer": "Dạ, sản phẩm vẫn còn hàng. Bạn có thể đặt ngay tại đây: https://shop.example.com"
+      "answer": "Có 3 engine: (1) SMC ICT Alpha — Order Block, FVG, BOS/CHoCH, Liquidity Sweep; (2) Trend Ribbon Pro — dải EMA 21/50/200 + ATR bám xu hướng; (3) Mean Reversion Sweep — Bollinger + phân kỳ RSI bắt đảo chiều. Gõ /engines để xem chi tiết."
     },
     {
-      "id": "faq_pay_vi",
+      "id": "faq_nx_3",
       "lang": "VI",
-      "question": "Shop hỗ trợ những hình thức thanh toán nào?",
+      "question": "Vì sao bot không gửi mọi tín hiệu?",
       "keywords": [
-        "thanh toán",
-        "chuyển khoản",
-        "paypal",
-        "usdt",
-        "qr",
-        "trả tiền"
+        "không gửi",
+        "ít tín hiệu",
+        "lọc",
+        "ngưỡng",
+        "80 điểm"
       ],
-      "answer": "Shop hỗ trợ thanh toán linh hoạt qua PayPal, USDT (TRC20/BEP20) và quét mã QR ngân hàng. Bạn bấm nút 'Thanh toán' hoặc gõ /pay để nhận thông tin nhé!"
+      "answer": "Bot chỉ phát tín hiệu có điểm từ 80/100 trở lên để tránh nhiễu. Tín hiệu yếu (ví dụ 26/45 điểm thành phần) thường là tín hiệu 'đứng ngoài' — vào lệnh theo chúng là nguyên nhân thua lỗ phổ biến nhất. Thà ít lệnh mà chất lượng."
     },
     {
-      "id": "faq_warranty_vi",
+      "id": "faq_nx_4",
       "lang": "VI",
-      "question": "Chế độ bảo hành và hỗ trợ kỹ thuật ra sao?",
+      "question": "Cách đọc một tin nhắn tín hiệu của bot?",
       "keywords": [
-        "bảo hành",
-        "đổi trả",
-        "lỗi",
-        "hỗ trợ kỹ thuật"
+        "đọc tín hiệu",
+        "entry",
+        "sl",
+        "tp",
+        "hướng dẫn đọc"
       ],
-      "answer": "Tất cả sản phẩm đều được bảo hành chính hãng 12 tháng, lỗi 1 đổi 1 trong 30 ngày đầu và hỗ trợ kỹ thuật 24/7 qua Telegram."
+      "answer": "Một tín hiệu gồm: cặp + khung thời gian, chiều BUY/SELL và giá vào (Entry), 3 mốc chốt lời TP1/TP2/TP3 (chia 50/30/20), Stop Loss, điểm chất lượng, engine phát hiện và lot gợi ý. Luôn kiểm tra lại trên Cockpit trước khi quyết định."
     },
     {
-      "id": "faq_en_1",
+      "id": "faq_nx_5",
+      "lang": "VI",
+      "question": "Bot có tự đặt lệnh tiền thật không?",
+      "keywords": [
+        "tự đặt lệnh",
+        "auto trade",
+        "tiền thật",
+        "dry run",
+        "paper"
+      ],
+      "answer": "Không. Bot chỉ GỬI THÔNG BÁO tín hiệu đạt chuẩn. Hệ thống NexusPilot chạy mặc định ở chế độ DRY_RUN / tài khoản paper để kiểm chứng hiệu quả trước; quyết định vào lệnh và chịu trách nhiệm rủi ro luôn thuộc về bạn."
+    },
+    {
+      "id": "faq_nx_6",
+      "lang": "VI",
+      "question": "Quản trị rủi ro của hệ thống ra sao?",
+      "keywords": [
+        "rủi ro",
+        "lot",
+        "vốn",
+        "drawdown",
+        "bảo toàn"
+      ],
+      "answer": "Lot tối đa 0.02, rủi ro ~1%/lệnh, tối đa 3 vị thế cùng lúc, chốt lời 50/30/20, dời SL về hòa vốn sau TP1 và có Daily Drawdown Guard dừng giao dịch khi chạm giới hạn lỗ ngày. Gõ /risk để xem đầy đủ."
+    },
+    {
+      "id": "faq_nx_7",
+      "lang": "VI",
+      "question": "Xem tín hiệu trực tiếp ở đâu?",
+      "keywords": [
+        "cockpit",
+        "xem trực tiếp",
+        "web",
+        "link"
+      ],
+      "answer": "Mở Cockpit NexusPilot Pro tại https://mt5-mrbit-2026-v2.onrender.com/ — có biểu đồ, điểm tín hiệu theo từng yếu tố, sổ lệnh và trạng thái Prop Firm Guard theo thời gian thực."
+    },
+    {
+      "id": "faq_nx_8",
+      "lang": "VI",
+      "question": "Tín hiệu có phải lời khuyên đầu tư không?",
+      "keywords": [
+        "lời khuyên",
+        "đầu tư",
+        "cam kết",
+        "lợi nhuận",
+        "chắc thắng"
+      ],
+      "answer": "Không. Mọi tín hiệu chỉ mang tính tham khảo từ hệ thống tự động, không phải lời khuyên đầu tư và không có cam kết lợi nhuận. Thị trường luôn có rủi ro — hãy tự kiểm chứng và chỉ giao dịch bằng vốn nhàn rỗi."
+    },
+    {
+      "id": "faq_nx_en_1",
       "lang": "EN",
-      "question": "What payment methods do you accept?",
+      "question": "What is NexusPilot Pro?",
       "keywords": [
-        "payment",
-        "pay",
-        "paypal",
-        "usdt",
-        "crypto",
-        "buy"
+        "nexuspilot",
+        "what is",
+        "system",
+        "about"
       ],
-      "answer": "We accept PayPal, USDT (TRC20/BEP20), and QR Code instant payment. Use /pay or click the Payment button to proceed!"
+      "answer": "NexusPilot Pro is an MT5 trading cockpit & signal engine. It scans XAUUSD, EURUSD, GBPUSD, USDJPY and BTCUSD with 3 signal engines, scores every signal transparently and only broadcasts signals scoring 80/100 or higher. Signals are for reference only — not financial advice."
     },
     {
-      "id": "faq_en_2",
+      "id": "faq_nx_en_2",
       "lang": "EN",
-      "question": "How much is shipping and delivery time?",
+      "question": "How does the bot send signals?",
       "keywords": [
-        "shipping",
-        "delivery",
-        "ship",
-        "stock",
-        "available"
+        "how",
+        "send",
+        "signal",
+        "automatic",
+        "alert"
       ],
-      "answer": "All items are in stock! Domestic shipping is 20,000 VND (inner city) or 30,000 VND (provinces). Digital products are delivered instantly via https://shop.example.com"
+      "answer": "When the cockpit detects a signal scoring 80/100 or above, this bot automatically posts it here with entry, stop loss, TP1/TP2/TP3, score and the detecting engine. Type /tin_hieu for the latest broadcast signal."
     },
     {
-      "id": "faq_ru_1",
+      "id": "faq_nx_ru_1",
       "lang": "RU",
-      "question": "Какие способы оплаты вы принимаете?",
+      "question": "Что такое NexusPilot Pro?",
       "keywords": [
-        "оплата",
-        "оплатить",
-        "paypal",
-        "usdt",
-        "купить",
-        "цена"
+        "nexuspilot",
+        "что это",
+        "система"
       ],
-      "answer": "Мы принимаем PayPal, USDT (TRC20/BEP20) и оплату по QR-коду. Нажмите кнопку «Оплата» или введите /pay для получения реквизитов!"
-    },
-    {
-      "id": "faq_ru_2",
-      "lang": "RU",
-      "question": "Есть ли товар в наличии и как оформить заказ?",
-      "keywords": [
-        "наличии",
-        "доставка",
-        "заказ",
-        "товар"
-      ],
-      "answer": "Да, все товары в наличии! Вы можете оформить заказ прямо сейчас на сайте: https://shop.example.com"
+      "answer": "NexusPilot Pro — это торговая панель и сигнальный движок для MT5. Система сканирует XAUUSD, EURUSD, GBPUSD, USDJPY и BTCUSD тремя движками, оценивает каждый сигнал и отправляет только сигналы с оценкой от 80/100. Сигналы носят справочный характер и не являются финансовой рекомендацией."
     }
   ],
-  "customers": [
-    {
-      "id": "cust_1",
-      "telegram_id": "100001",
-      "username": "lan_anh",
-      "full_name": "Lan Anh",
-      "language": "VI",
-      "interested_in": "Sản phẩm A",
-      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
-      "created_at": "2026-10-24T10:14:00"
-    },
-    {
-      "id": "cust_2",
-      "telegram_id": "100002",
-      "username": "minh_duc",
-      "full_name": "Minh Đức",
-      "language": "VI",
-      "interested_in": "Sản phẩm B",
-      "last_message": "Sản phẩm này còn hàng không ạ?",
-      "created_at": "2026-10-24T10:17:00"
-    },
-    {
-      "id": "cust_guest",
-      "telegram_id": "guest",
-      "username": "",
-      "full_name": "Khách hàng",
-      "language": "VI",
-      "interested_in": "Tư vấn chung",
-      "last_message": "/start",
-      "created_at": "2026-10-24T09:43:08",
-      "updated_at": "2026-10-24T09:44:17"
-    },
-    {
-      "id": "cust_u_lan_anh",
-      "telegram_id": "u_lan_anh",
-      "username": "",
-      "full_name": "Khách hàng",
-      "language": "VI",
-      "interested_in": "Tư vấn chung",
-      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
-      "created_at": "2026-10-24T09:43:08",
-      "updated_at": "2026-10-24T09:44:17"
-    },
-    {
-      "id": "cust_diag_test",
-      "telegram_id": "diag_test",
-      "username": "",
-      "full_name": "Khách hàng",
-      "language": "VI",
-      "interested_in": "Tư vấn chung",
-      "last_message": "/start",
-      "created_at": "2026-10-24T09:43:10",
-      "updated_at": "2026-10-24T09:50:32"
-    },
-    {
-      "id": "cust_sim_user_1",
-      "telegram_id": "sim_user_1",
-      "username": "",
-      "full_name": "Khách hàng Test",
-      "language": "VI",
-      "interested_in": "Tư vấn chung",
-      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
-      "created_at": "2026-10-24T09:43:10"
-    }
-  ],
+  "customers": [],
   "settings": {
-    "shop_name": "Shop AI Automation",
-    "shop_url": "https://shop.example.com",
+    "shop_name": "NexusPilot Pro",
+    "shop_url": "https://mt5-mrbit-2026-v2.onrender.com/",
     "support_username": "@phucanhmrt",
     "shipping_inner_city": "20.000đ",
     "shipping_province": "30.000đ",
@@ -271,21 +281,26 @@
       "cooldown_seconds": 5,
       "max_msgs_per_minute": 6,
       "trigger_keywords": [
-        "shop ơi",
-        "phí giao hàng",
-        "giao hàng",
-        "ship",
-        "còn hàng",
-        "hết hàng",
-        "bảng giá",
-        "giá bao nhiêu",
-        "mua hàng",
-        "đặt hàng",
-        "thanh toán",
-        "paypal",
-        "usdt",
-        "bảo hành",
-        "tư vấn"
+        "tín hiệu",
+        "tin hieu",
+        "signal",
+        "xauusd",
+        "vàng",
+        "gold",
+        "eurusd",
+        "gbpusd",
+        "usdjpy",
+        "btc",
+        "bitcoin",
+        "lệnh",
+        "entry",
+        "stop loss",
+        "take profit",
+        "engine",
+        "nexuspilot",
+        "cockpit",
+        "điểm tín hiệu",
+        "rủi ro"
       ],
       "ignored_keywords": [
         "xem trận tối nay",

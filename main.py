@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 from database import DatabaseManager, generate_supabase_sql
 from faq_engine import FAQEngine
+import signal_relay
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -78,6 +79,8 @@ def _protect_api():
     # url_rule duoc Flask gan sau khi khop route theo duong dan goc cua request,
     # dang tin cay hon request.path trong moi truong rewrite cua Vercel.
     rule = request.url_rule
+    if rule is not None and rule.rule == "/api/signal-relay":
+        return None
     if rule is not None and rule.rule.startswith("/api/"):
         return _admin_denied_response()
     return None
@@ -119,7 +122,10 @@ def get_env_config() -> Dict[str, str]:
         "WEBHOOK_URL": os.getenv("WEBHOOK_URL", "").strip(),
         "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", "").strip(),
         "ADMIN_KEY": os.getenv("ADMIN_KEY", "").strip(),
-        "TELEGRAM_WEBHOOK_SECRET": os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+        "TELEGRAM_WEBHOOK_SECRET": os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip(),
+        "SIGNAL_KEY": os.getenv("SIGNAL_KEY", "").strip(),
+        "SIGNAL_CHAT_ID": os.getenv("SIGNAL_CHAT_ID", "").strip(),
+        "SIGNAL_MIN_SCORE": os.getenv("SIGNAL_MIN_SCORE", "80").strip()
     }
 
 
@@ -156,6 +162,9 @@ def save_env_config(updates: Dict[str, str]) -> Dict[str, str]:
         f"GEMINI_API_KEY={current.get('GEMINI_API_KEY', '')}",
         f"ADMIN_KEY={current.get('ADMIN_KEY', '')}",
         f"TELEGRAM_WEBHOOK_SECRET={current.get('TELEGRAM_WEBHOOK_SECRET', '')}",
+        f"SIGNAL_KEY={current.get('SIGNAL_KEY', '')}",
+        f"SIGNAL_CHAT_ID={current.get('SIGNAL_CHAT_ID', '')}",
+        f"SIGNAL_MIN_SCORE={current.get('SIGNAL_MIN_SCORE', '80')}",
         ""
     ]
     if IS_VERCEL:
@@ -193,6 +202,32 @@ def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: O
         return {"ok": False, "description": str(e)}
 
 
+ENGINES_TEXT = (
+    "🧠 **3 ENGINE TÍN HIỆU CỦA NEXUSPILOT PRO**\n\n"
+    "1️⃣ **SMC ICT Alpha** — Đọc cấu trúc thị trường kiểu ICT: Order Block, "
+    "Fair Value Gap (FVG), BOS/CHoCH và Liquidity Sweep.\n"
+    "2️⃣ **Trend Ribbon Pro** — Bám xu hướng bằng dải EMA 21/50/200 kết hợp "
+    "ATR, ưu tiên điểm vào khi giá hồi về vùng ribbon.\n"
+    "3️⃣ **Mean Reversion Sweep** — Bắt điểm đảo chiều khi giá quét cực trị: "
+    "Bollinger Bands + phân kỳ RSI.\n\n"
+    "Mỗi tín hiệu đều được chấm điểm minh bạch theo từng yếu tố. Chỉ tín hiệu "
+    "đạt ngưỡng chất lượng mới được bot phát tự động."
+)
+
+RISK_TEXT = (
+    "🛡 **QUY TẮC QUẢN TRỊ RỦI RO NEXUSPILOT PRO**\n\n"
+    "• Khối lượng tối đa **0.02 lot** cho lệnh do hệ thống gợi ý.\n"
+    "• Rủi ro mỗi lệnh khoảng **1% tài khoản** — luôn đặt Stop Loss.\n"
+    "• Chỉ phát tín hiệu có **điểm từ 80/100** và tối đa **3 vị thế** cùng lúc.\n"
+    "• Chốt lời chia 3 phần: **TP1 50% · TP2 30% · TP3 20%**, chạm TP1 thì "
+    "dời SL về điểm hòa vốn (Break-Even).\n"
+    "• Có **Daily Drawdown Guard**: chạm giới hạn lỗ ngày thì dừng, không gỡ gạc.\n"
+    "• Mặc định chạy **DRY_RUN / tài khoản paper** để kiểm chứng trước khi "
+    "dùng tiền thật.\n\n"
+    "⚠️ Mọi tín hiệu chỉ là tham khảo — không phải lời khuyên đầu tư."
+)
+
+
 def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
     """
     Tạo bàn phím Inline Keyboard chuẩn theo Bước 7 và Bước 9.
@@ -204,22 +239,26 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
     shop_url = settings.get("shop_url", "https://shop.example.com")
 
     if menu_type == "start_menu":
-        # Chuẩn giao diện Bước 9: 📋 FAQ | 💰 Bảng giá | 🤖 Hỗ trợ
+        # Menu chinh NexusPilot Pro
         return {
             "inline_keyboard": [
-                [{"text": "📋 FAQ", "callback_data": "menu_faq"}],
-                [{"text": "💰 Bảng giá", "callback_data": "menu_pricing"}],
-                [{"text": "🤖 Hỗ trợ", "callback_data": "menu_consultant"}]
+                [{"text": "📡 Tín hiệu mới nhất", "callback_data": "menu_signal"}],
+                [{"text": "🧠 3 Engine tín hiệu", "callback_data": "menu_engines"}],
+                [{"text": "🛡 Quản trị rủi ro", "callback_data": "menu_risk"}],
+                [{"text": "🖥 Mở Cockpit NexusPilot", "url": signal_relay.COCKPIT_URL}],
+                [{"text": "📋 FAQ NexusPilot", "callback_data": "menu_faq"},
+                 {"text": "👤 Hỗ trợ", "callback_data": "menu_human_support"}]
             ]
         }
 
     if menu_type == "main_consultant":
-        # Chuẩn giao diện Bước 7: Chọn sản phẩm | Xem bảng giá | Gặp tư vấn viên + Thanh toán & Đa ngôn ngữ
+        # Menu dieu huong NexusPilot Pro
         return {
             "inline_keyboard": [
-                [{"text": "📦 Chọn sản phẩm >", "callback_data": "menu_products"}],
-                [{"text": "📋 Xem bảng giá >", "callback_data": "menu_pricing"}],
-                [{"text": "💳 Thanh toán (PayPal / USDT) >", "callback_data": "menu_payment"}],
+                [{"text": "📡 Tín hiệu mới nhất >", "callback_data": "menu_signal"}],
+                [{"text": "🧠 3 Engine tín hiệu >", "callback_data": "menu_engines"}],
+                [{"text": "🛡 Quản trị rủi ro >", "callback_data": "menu_risk"}],
+                [{"text": "📈 Các cặp đang theo dõi >", "callback_data": "menu_products"}],
                 [{"text": "🌐 FAQ đa ngôn ngữ (VI/EN/RU) >", "callback_data": "menu_faq_lang"}],
                 [{"text": "👤 Gặp tư vấn viên >", "callback_data": "menu_human_support"}]
             ]
@@ -296,6 +335,24 @@ def generate_bot_reply(
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
+        if callback_data == "menu_signal":
+            return {
+                "responded": True,
+                "text": signal_relay.latest_signal_text(),
+                "reply_markup": build_inline_keyboard("main_consultant")
+            }
+        if callback_data == "menu_engines":
+            return {
+                "responded": True,
+                "text": ENGINES_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant")
+            }
+        if callback_data == "menu_risk":
+            return {
+                "responded": True,
+                "text": RISK_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant")
+            }
         if callback_data == "menu_faq":
             return {
                 "responded": True,
@@ -422,10 +479,60 @@ def generate_bot_reply(
 
     # 3. Xử lý các lệnh chuẩn (/start, /ship, /faq, /price, /products, /pay, /support, /lang)
     if cmd == "/start":
-        # Chuẩn giao diện Bước 9.1: Test lệnh /start
         return {
             "responded": True,
-            "text": "Xin chào!\nTôi là trợ lý AI của bạn.\nSẵn sàng hỗ trợ! ✨",
+            "text": (
+                "Xin chào! 👋\n"
+                "Tôi là bot tín hiệu của **NexusPilot Pro** — hệ thống cockpit & "
+                "signal engine giao dịch MT5.\n\n"
+                "📡 Tôi tự động gửi tín hiệu đạt chuẩn (điểm từ 80/100) ngay khi "
+                "hệ thống phát hiện.\n"
+                "Gõ /tin_hieu để xem tín hiệu gần nhất, hoặc chọn mục bên dưới:"
+            ),
+            "reply_markup": build_inline_keyboard("start_menu")
+        }
+
+    if cmd in ("/tin_hieu", "/signal", "/tinhieu"):
+        return {
+            "responded": True,
+            "text": signal_relay.latest_signal_text(),
+            "reply_markup": build_inline_keyboard("main_consultant")
+        }
+
+    if cmd == "/engines":
+        return {
+            "responded": True,
+            "text": ENGINES_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant")
+        }
+
+    if cmd == "/risk":
+        return {
+            "responded": True,
+            "text": RISK_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant")
+        }
+
+    if cmd == "/cockpit":
+        return {
+            "responded": True,
+            "text": f"🖥 **Cockpit NexusPilot Pro:**\n{signal_relay.COCKPIT_URL}",
+            "reply_markup": build_inline_keyboard("start_menu")
+        }
+
+    if cmd == "/help":
+        return {
+            "responded": True,
+            "text": (
+                "📖 **CÁC LỆNH CỦA BOT:**\n"
+                "/start — Menu chính\n"
+                "/tin_hieu — Tín hiệu đạt chuẩn gần nhất\n"
+                "/engines — Giới thiệu 3 engine tín hiệu\n"
+                "/risk — Quy tắc quản trị rủi ro\n"
+                "/cockpit — Mở web cockpit\n"
+                "/faq — Câu hỏi thường gặp\n"
+                "/support — Gặp tư vấn viên"
+            ),
             "reply_markup": build_inline_keyboard("start_menu")
         }
 
@@ -666,7 +773,10 @@ def api_get_state():
             "SUPABASE_URL": env["SUPABASE_URL"],
             "SUPABASE_KEY": mask_secret(env["SUPABASE_KEY"]),
             "WEBHOOK_URL": env["WEBHOOK_URL"],
-            "GEMINI_API_KEY": mask_secret(env["GEMINI_API_KEY"])
+            "GEMINI_API_KEY": mask_secret(env["GEMINI_API_KEY"]),
+            "SIGNAL_KEY": mask_secret(env.get("SIGNAL_KEY", "")),
+            "SIGNAL_CHAT_ID": env.get("SIGNAL_CHAT_ID", ""),
+            "SIGNAL_MIN_SCORE": env.get("SIGNAL_MIN_SCORE", "80")
         },
         "database": {
             "status": db_status,
@@ -713,14 +823,14 @@ def api_step1_verify():
 
     # Tự động đăng ký Menu lệnh cho Bot
     commands = [
-        {"command": "start", "description": "Khởi động trợ lý AI & hiển thị Menu chính"},
-        {"command": "products", "description": "Chọn sản phẩm & xem tồn kho"},
-        {"command": "price", "description": "Xem bảng giá niêm yết"},
-        {"command": "pay", "description": "Thanh toán qua PayPal / USDT / QR Code"},
+        {"command": "start", "description": "Menu chính NexusPilot Pro"},
+        {"command": "tin_hieu", "description": "Tín hiệu đạt chuẩn gần nhất"},
+        {"command": "engines", "description": "Giới thiệu 3 engine tín hiệu"},
+        {"command": "risk", "description": "Quy tắc quản trị rủi ro"},
+        {"command": "cockpit", "description": "Mở web cockpit NexusPilot"},
         {"command": "faq", "description": "Câu hỏi thường gặp (VI / EN / RU)"},
-        {"command": "ship", "description": "Tra cứu phí giao hàng nội thành & tỉnh"},
-        {"command": "lang", "description": "Đổi ngôn ngữ (Tiếng Việt / English / Русский)"},
-        {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"}
+        {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"},
+        {"command": "help", "description": "Danh sách lệnh của bot"}
     ]
     telegram_api("setMyCommands", {"commands": commands}, token=token)
     logger.info(f"Connected to Telegram Bot @{bot_info.get('username')} (ID: {bot_info.get('id')})")
@@ -1066,6 +1176,60 @@ def api_step8_group():
 
 
 # --- BƯỚC 9: KIỂM TRA BOT, GIẢ LẬP CHAT & CHẨN ĐOÁN LỖI ---
+@app.route("/api/signal-relay", methods=["POST"])
+def api_signal_relay():
+    """
+    Cau noi Cockpit NexusPilot -> Telegram: nhan tin hieu dat chuan va phat
+    toi SIGNAL_CHAT_ID (hoac CHAT_ID). Bao ve bang header X-Signal-Key
+    (bien SIGNAL_KEY), KHONG dung ADMIN_KEY. Loc nguong diem + chong trung.
+    """
+    if not signal_relay.signal_key():
+        return jsonify({"ok": False, "message": "Chua cau hinh SIGNAL_KEY phia server."}), 503
+    if not signal_relay.check_key(request.headers.get("X-Signal-Key")):
+        return jsonify({"ok": False, "message": "Sai hoac thieu X-Signal-Key."}), 401
+    payload = request.get_json(silent=True) or {}
+    sig, err = signal_relay.validate_signal(payload)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    score = sig.get("score")
+    if score is not None and score < signal_relay.min_score():
+        signal_relay.record_signal(sig, sent=False, reason="below_threshold")
+        return jsonify({"ok": True, "sent": False, "reason": "below_threshold",
+                        "min_score": signal_relay.min_score()})
+    dup = signal_relay.find_duplicate(sig)
+    if dup:
+        signal_relay.record_signal(sig, sent=False, reason="duplicate")
+        return jsonify({"ok": True, "sent": False, "reason": "duplicate",
+                        "first_received_at": dup.get("_received_at")})
+    chat_id = signal_relay.destination_chat_id()
+    if not chat_id:
+        return jsonify({"ok": False,
+                        "message": "Chua cau hinh SIGNAL_CHAT_ID hoac CHAT_ID de nhan tin hieu."}), 503
+    res = telegram_api("sendMessage", {
+        "chat_id": chat_id,
+        "text": signal_relay.format_signal_message(sig),
+        "parse_mode": "Markdown"
+    })
+    if not res.get("ok"):
+        # Fallback khong Markdown neu dinh dang gay loi
+        res = telegram_api("sendMessage", {
+            "chat_id": chat_id,
+            "text": signal_relay.format_signal_message(sig)
+        })
+    if not res.get("ok"):
+        return jsonify({"ok": False,
+                        "message": f"Telegram tu choi: {res.get('description', 'loi khong ro')}"}), 502
+    signal_relay.record_signal(sig, sent=True)
+    logger.info(f"Signal relayed: {sig['symbol']} {sig['direction']} score={score}")
+    return jsonify({"ok": True, "sent": True, "chat_id": chat_id})
+
+
+@app.route("/api/signals", methods=["GET"])
+def api_signals():
+    """Danh sach tin hieu gan day (chi doc, da qua khoa ADMIN_KEY)."""
+    return jsonify({"ok": True, "signals": signal_relay.recent_signals(limit=20)})
+
+
 @app.route("/api/step9/simulate", methods=["POST"])
 def api_step9_simulate():
     """

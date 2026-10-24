@@ -13,6 +13,7 @@ import urllib.request
 import urllib.parse
 from typing import Dict, List, Any, Optional, Tuple
 from database import DatabaseManager
+import signal_relay
 
 logger = logging.getLogger("TelegramBot.FAQEngine")
 
@@ -185,29 +186,27 @@ class FAQEngine:
         products = self.db.get_products()
         settings = self.db.get_settings()
         shop_url = settings.get("shop_url", "https://shop.example.com")
-        lines = ["📦 **DANH MỤC SẢN PHẨM HIỆN CÓ:**\n"]
+        lines = ["📈 **CÁC CẶP ĐANG THEO DÕI TRÊN NEXUSPILOT:**\n"]
         for idx, p in enumerate(products, 1):
-            status = "✅ Còn hàng" if p.get("in_stock", True) else "❌ Tạm hết"
+            status = "✅ Đang theo dõi" if p.get("in_stock", True) else "⏸ Tạm dừng"
             lines.append(
                 f"{idx}. **{p.get('name')}** ({status})\n"
                 f"   • Mô tả: {p.get('description')}\n"
-                f"   • Đặt hàng: {p.get('order_url', shop_url)}"
+                f"   • Cockpit: {p.get('order_url', shop_url)}"
             )
-        lines.append("\n👉 Bấm vào từng sản phẩm bên dưới để xem chi tiết hoặc đặt mua!")
+        lines.append("\n👉 Bấm vào từng cặp bên dưới để xem chi tiết!")
         return "\n".join(lines)
 
     def format_pricing_message(self) -> str:
-        """Bảng giá niêm yết theo Bước 7 (2. Xem bảng giá) & Bước 9 (3. Đối chiếu bảng giá)."""
+        """Cap chat luong tin hieu & ke hoach chot loi (du lieu bang pricing)."""
         pricing = self.db.get_pricing()
-        lines = ["💰 **BẢNG GIÁ NIÊM YẾT CHÍNH THỨC:**\n"]
+        lines = ["⭐ **CẤP CHẤT LƯỢNG TÍN HIỆU & KẾ HOẠCH LỆNH:**\n"]
         for item in pricing:
             lines.append(
                 f"🔹 **{item.get('name')}** — *{item.get('plan', '')}*\n"
-                f"   • Giá VNĐ: `{item.get('price_vnd')}`\n"
-                f"   • Quốc tế: `{item.get('price_usd')}` | `{item.get('price_usdt')}`\n"
-                f"   • Quyền lợi: {item.get('details')}\n"
+                f"   • {item.get('details')}\n"
             )
-        lines.append("📞 Cần tư vấn gói riêng? Hãy chọn **Liên hệ tư vấn** bên dưới!")
+        lines.append("📞 Cần hỗ trợ thêm? Hãy chọn **Gặp tư vấn viên** bên dưới!")
         return "\n".join(lines)
 
     def format_payment_message(self, method: str = "ALL") -> Dict[str, Any]:
@@ -272,47 +271,55 @@ class FAQEngine:
         settings = self.db.get_settings()
         shop_url = settings.get("shop_url", "https://shop.example.com")
 
-        # 1. Kịch bản chính xác trong hình Bước 8: Hỏi phí giao hàng
-        if any(k in msg_lower for k in ["phí giao hàng", "phí ship", "tiền ship", "giao hàng"]):
-            inner = settings.get("shipping_inner_city", "20.000đ")
-            prov = settings.get("shipping_province", "30.000đ")
+        # 1. Hoi tin hieu moi nhat
+        if any(k in msg_lower for k in ["tín hiệu", "tin hieu", "signal", "lệnh mới", "có lệnh"]):
+            return {
+                "text": signal_relay.latest_signal_text(),
+                "menu_type": None if is_group else "main_consultant"
+            }
+
+        # 2. Hoi ve 3 engine
+        if any(k in msg_lower for k in ["engine", "smc", "ict", "trend ribbon",
+                                        "mean reversion", "thuật toán", "thuat toan"]):
             return {
                 "text": (
-                    f"Dạ, phí giao hàng tùy khu vực:\n"
-                    f"Nội thành {inner}, tỉnh {prov}.\n"
-                    f"Bạn có thể dùng /ship để tra cứu chi tiết nhé!"
+                    "🧠 **3 ENGINE TÍN HIỆU NEXUSPILOT PRO**\n\n"
+                    "1️⃣ **SMC ICT Alpha** — Order Block, FVG, BOS/CHoCH, Liquidity Sweep.\n"
+                    "2️⃣ **Trend Ribbon Pro** — EMA 21/50/200 + ATR, bám xu hướng.\n"
+                    "3️⃣ **Mean Reversion Sweep** — Bollinger + phân kỳ RSI, bắt đảo chiều.\n\n"
+                    "Gõ /engines để xem chi tiết từng engine."
                 ),
                 "menu_type": None if is_group else "main_consultant"
             }
 
-        # 2. Kịch bản chính xác trong hình Bước 8: Hỏi còn hàng không
-        if any(k in msg_lower for k in ["còn hàng không", "còn hàng", "hết hàng", "tồn kho"]):
+        # 3. Hoi quan tri rui ro / von / lot
+        if any(k in msg_lower for k in ["rủi ro", "rui ro", "quản trị vốn", "lot",
+                                        "stop loss", "cắt lỗ", "drawdown", "vốn bao nhiêu"]):
             return {
-                "text": f"Dạ, sản phẩm vẫn còn hàng.\nBạn có thể đặt ngay tại đây:\n{shop_url}",
-                "menu_type": None if is_group else "products"
+                "text": (
+                    "🛡 **QUẢN TRỊ RỦI RO NEXUSPILOT PRO**\n\n"
+                    "• Lot tối đa 0.02, rủi ro ~1%/lệnh, luôn có Stop Loss.\n"
+                    "• Chỉ phát tín hiệu điểm từ 80/100, tối đa 3 vị thế cùng lúc.\n"
+                    "• Chốt lời TP1 50% · TP2 30% · TP3 20%, chạm TP1 dời SL về hòa vốn.\n"
+                    "• Có Daily Drawdown Guard và chế độ DRY_RUN kiểm chứng trước.\n\n"
+                    "Gõ /risk để xem đầy đủ. ⚠️ Tín hiệu chỉ là tham khảo, không phải lời khuyên đầu tư."
+                ),
+                "menu_type": None if is_group else "main_consultant"
             }
 
-        # 3. Kịch bản chính xác trong hình Bước 7: "Mình cần tư vấn sản phẩm"
-        if any(k in msg_lower for k in ["tư vấn sản phẩm", "cần tư vấn", "tư vấn", "mua sản phẩm", "chọn sản phẩm"]):
-            return {
-                "text": "Bạn muốn tìm hiểu sản phẩm nào?",
-                "menu_type": "main_consultant"
-            }
-
-        # 4. Hỏi bảng giá
-        if any(k in msg_lower for k in ["bảng giá", "giá bao nhiêu", "báo giá", "price", "цена"]):
+        # 4. Hoi diem / chat luong tin hieu
+        if any(k in msg_lower for k in ["điểm tín hiệu", "chất lượng", "q1", "q2", "q3",
+                                        "bao nhiêu điểm", "ngưỡng"]):
             return {
                 "text": self.format_pricing_message(),
                 "menu_type": "pricing"
             }
 
-        # 5. Hỏi thanh toán
-        if any(k in msg_lower for k in ["thanh toán", "paypal", "usdt", "payment", "оплата"]):
-            pay_info = self.format_payment_message("ALL")
+        # 5. Hoi cockpit / mo web
+        if any(k in msg_lower for k in ["cockpit", "mở web", "link web", "trang web", "vào web"]):
             return {
-                "text": pay_info["text"],
-                "menu_type": "payment",
-                "qr_url": pay_info["qr_url"]
+                "text": f"🖥 **Cockpit NexusPilot Pro:**\n{signal_relay.COCKPIT_URL}",
+                "menu_type": None if is_group else "main_consultant"
             }
 
         # 6. Đối chiếu trong bảng FAQ đa ngôn ngữ
@@ -344,7 +351,7 @@ class FAQEngine:
             }
 
         return {
-            "text": "Bạn muốn tìm hiểu sản phẩm nào? Hãy chọn một mục bên dưới để mình hỗ trợ nhanh nhất nhé! ✨",
+            "text": "Bạn muốn xem tín hiệu mới nhất, tìm hiểu 3 engine hay quy tắc quản trị rủi ro? Hãy chọn một mục bên dưới nhé! ✨",
             "menu_type": "main_consultant"
         }
 
