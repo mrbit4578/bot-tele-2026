@@ -1,0 +1,298 @@
+{
+  "products": [
+    {
+      "id": "prod_a",
+      "name": "Sản phẩm A - Gói AI Pro",
+      "code": "SP_A",
+      "category": "Phần mềm AI",
+      "description": "Giải pháp Chatbot AI tự động hóa chăm sóc khách hàng 24/7 đa kênh.",
+      "in_stock": true,
+      "stock_qty": 150,
+      "order_url": "https://shop.example.com/san-pham-a",
+      "features": [
+        "Tự động trả lời 24/7",
+        "Đa ngôn ngữ VI/EN/RU",
+        "Tích hợp nhóm Telegram"
+      ]
+    },
+    {
+      "id": "prod_b",
+      "name": "Sản phẩm B - Gói Enterprise",
+      "code": "SP_B",
+      "category": "Giải pháp Doanh nghiệp",
+      "description": "Hệ thống Bot AI cao cấp tích hợp Supabase, CRM và cổng thanh toán quốc tế.",
+      "in_stock": true,
+      "stock_qty": 85,
+      "order_url": "https://shop.example.com/san-pham-b",
+      "features": [
+        "Lưu trữ Supabase tập trung",
+        "Thanh toán PayPal & USDT",
+        "Chống spam nhóm thông minh"
+      ]
+    },
+    {
+      "id": "prod_c",
+      "name": "Sản phẩm C - Thiết bị Smart Box",
+      "code": "SP_C",
+      "category": "Phần cứng",
+      "description": "Thiết bị phần cứng thông minh kết nối hệ thống điều khiển qua Telegram.",
+      "in_stock": true,
+      "stock_qty": 42,
+      "order_url": "https://shop.example.com/san-pham-c",
+      "features": [
+        "Bảo hành 12 tháng",
+        "Giao hàng toàn quốc",
+        "Hỗ trợ kỹ thuật 1-1"
+      ]
+    }
+  ],
+  "pricing": [
+    {
+      "id": "price_1",
+      "product_id": "prod_a",
+      "name": "Sản phẩm A",
+      "plan": "Gói Cơ Bản (1 Tháng)",
+      "price_vnd": "490.000đ",
+      "price_usd": "$19.99",
+      "price_usdt": "20 USDT",
+      "details": "Đầy đủ tính năng tư vấn tự động, FAQ đa ngôn ngữ, hỗ trợ 1 nhóm Telegram."
+    },
+    {
+      "id": "price_2",
+      "product_id": "prod_b",
+      "name": "Sản phẩm B",
+      "plan": "Gói Chuyên Nghiệp (1 Năm)",
+      "price_vnd": "2.990.000đ",
+      "price_usd": "$119.99",
+      "price_usdt": "120 USDT",
+      "details": "Không giới hạn nhóm, tích hợp Supabase, cổng thanh toán PayPal & USDT, ưu tiên hỗ trợ VIP."
+    },
+    {
+      "id": "price_3",
+      "product_id": "prod_c",
+      "name": "Sản phẩm C",
+      "plan": "Bộ Thiết Bị Tiêu Chuẩn",
+      "price_vnd": "1.250.000đ",
+      "price_usd": "$49.99",
+      "price_usdt": "50 USDT",
+      "details": "Tặng kèm 3 tháng sử dụng Bot AI Pro miễn phí. Phí ship nội thành 20.000đ, tỉnh 30.000đ."
+    }
+  ],
+  "faqs": [
+    {
+      "id": "faq_ship_vi",
+      "lang": "VI",
+      "question": "Phí giao hàng tính như thế nào?",
+      "keywords": [
+        "phí giao hàng",
+        "giao hàng",
+        "tiền ship",
+        "phí ship",
+        "vận chuyển",
+        "ship"
+      ],
+      "answer": "Dạ, phí giao hàng tùy khu vực: Nội thành 20.000đ, tỉnh 30.000đ. Bạn có thể dùng /ship để tra cứu chi tiết nhé!"
+    },
+    {
+      "id": "faq_stock_vi",
+      "lang": "VI",
+      "question": "Sản phẩm này còn hàng không ạ?",
+      "keywords": [
+        "còn hàng",
+        "hết hàng",
+        "tồn kho",
+        "mua ngay",
+        "đặt hàng"
+      ],
+      "answer": "Dạ, sản phẩm vẫn còn hàng. Bạn có thể đặt ngay tại đây: https://shop.example.com"
+    },
+    {
+      "id": "faq_pay_vi",
+      "lang": "VI",
+      "question": "Shop hỗ trợ những hình thức thanh toán nào?",
+      "keywords": [
+        "thanh toán",
+        "chuyển khoản",
+        "paypal",
+        "usdt",
+        "qr",
+        "trả tiền"
+      ],
+      "answer": "Shop hỗ trợ thanh toán linh hoạt qua PayPal, USDT (TRC20/BEP20) và quét mã QR ngân hàng. Bạn bấm nút 'Thanh toán' hoặc gõ /pay để nhận thông tin nhé!"
+    },
+    {
+      "id": "faq_warranty_vi",
+      "lang": "VI",
+      "question": "Chế độ bảo hành và hỗ trợ kỹ thuật ra sao?",
+      "keywords": [
+        "bảo hành",
+        "đổi trả",
+        "lỗi",
+        "hỗ trợ kỹ thuật"
+      ],
+      "answer": "Tất cả sản phẩm đều được bảo hành chính hãng 12 tháng, lỗi 1 đổi 1 trong 30 ngày đầu và hỗ trợ kỹ thuật 24/7 qua Telegram."
+    },
+    {
+      "id": "faq_en_1",
+      "lang": "EN",
+      "question": "What payment methods do you accept?",
+      "keywords": [
+        "payment",
+        "pay",
+        "paypal",
+        "usdt",
+        "crypto",
+        "buy"
+      ],
+      "answer": "We accept PayPal, USDT (TRC20/BEP20), and QR Code instant payment. Use /pay or click the Payment button to proceed!"
+    },
+    {
+      "id": "faq_en_2",
+      "lang": "EN",
+      "question": "How much is shipping and delivery time?",
+      "keywords": [
+        "shipping",
+        "delivery",
+        "ship",
+        "stock",
+        "available"
+      ],
+      "answer": "All items are in stock! Domestic shipping is 20,000 VND (inner city) or 30,000 VND (provinces). Digital products are delivered instantly via https://shop.example.com"
+    },
+    {
+      "id": "faq_ru_1",
+      "lang": "RU",
+      "question": "Какие способы оплаты вы принимаете?",
+      "keywords": [
+        "оплата",
+        "оплатить",
+        "paypal",
+        "usdt",
+        "купить",
+        "цена"
+      ],
+      "answer": "Мы принимаем PayPal, USDT (TRC20/BEP20) и оплату по QR-коду. Нажмите кнопку «Оплата» или введите /pay для получения реквизитов!"
+    },
+    {
+      "id": "faq_ru_2",
+      "lang": "RU",
+      "question": "Есть ли товар в наличии и как оформить заказ?",
+      "keywords": [
+        "наличии",
+        "доставка",
+        "заказ",
+        "товар"
+      ],
+      "answer": "Да, все товары в наличии! Вы можете оформить заказ прямо сейчас на сайте: https://shop.example.com"
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust_1",
+      "telegram_id": "100001",
+      "username": "lan_anh",
+      "full_name": "Lan Anh",
+      "language": "VI",
+      "interested_in": "Sản phẩm A",
+      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
+      "created_at": "2026-10-24T10:14:00"
+    },
+    {
+      "id": "cust_2",
+      "telegram_id": "100002",
+      "username": "minh_duc",
+      "full_name": "Minh Đức",
+      "language": "VI",
+      "interested_in": "Sản phẩm B",
+      "last_message": "Sản phẩm này còn hàng không ạ?",
+      "created_at": "2026-10-24T10:17:00"
+    },
+    {
+      "id": "cust_guest",
+      "telegram_id": "guest",
+      "username": "",
+      "full_name": "Khách hàng",
+      "language": "VI",
+      "interested_in": "Tư vấn chung",
+      "last_message": "/start",
+      "created_at": "2026-10-24T09:43:08",
+      "updated_at": "2026-10-24T09:44:17"
+    },
+    {
+      "id": "cust_u_lan_anh",
+      "telegram_id": "u_lan_anh",
+      "username": "",
+      "full_name": "Khách hàng",
+      "language": "VI",
+      "interested_in": "Tư vấn chung",
+      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
+      "created_at": "2026-10-24T09:43:08",
+      "updated_at": "2026-10-24T09:44:17"
+    },
+    {
+      "id": "cust_diag_test",
+      "telegram_id": "diag_test",
+      "username": "",
+      "full_name": "Khách hàng",
+      "language": "VI",
+      "interested_in": "Tư vấn chung",
+      "last_message": "/start",
+      "created_at": "2026-10-24T09:43:10",
+      "updated_at": "2026-10-24T09:50:32"
+    },
+    {
+      "id": "cust_sim_user_1",
+      "telegram_id": "sim_user_1",
+      "username": "",
+      "full_name": "Khách hàng Test",
+      "language": "VI",
+      "interested_in": "Tư vấn chung",
+      "last_message": "Shop ơi, tôi muốn hỏi về phí giao hàng?",
+      "created_at": "2026-10-24T09:43:10"
+    }
+  ],
+  "settings": {
+    "shop_name": "Shop AI Automation",
+    "shop_url": "https://shop.example.com",
+    "support_username": "@phucanhmrt",
+    "shipping_inner_city": "20.000đ",
+    "shipping_province": "30.000đ",
+    "payment": {
+      "paypal_email": "payment@shop.example.com",
+      "paypal_link": "https://paypal.me/shopexample",
+      "usdt_address": "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE",
+      "usdt_network": "TRC20 (Tron) / BEP20 (BSC)",
+      "bank_qr_info": "VIETCOMBANK - 0123456789 - SHOP AI AUTOMATION"
+    },
+    "group_config": {
+      "enabled": true,
+      "keyword_filter_enabled": true,
+      "anti_spam_enabled": true,
+      "cooldown_seconds": 5,
+      "max_msgs_per_minute": 6,
+      "trigger_keywords": [
+        "shop ơi",
+        "phí giao hàng",
+        "giao hàng",
+        "ship",
+        "còn hàng",
+        "hết hàng",
+        "bảng giá",
+        "giá bao nhiêu",
+        "mua hàng",
+        "đặt hàng",
+        "thanh toán",
+        "paypal",
+        "usdt",
+        "bảo hành",
+        "tư vấn"
+      ],
+      "ignored_keywords": [
+        "xem trận tối nay",
+        "đi cà phê",
+        "file báo cáo",
+        "report.pdf"
+      ]
+    }
+  }
+}

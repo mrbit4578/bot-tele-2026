@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hệ Thống Auto Tạo Bot Telegram 9 Bước</title>
+  <style>
+    :root {
+      --bg-paper: #f6f1e7;
+      --bg-card: #fffdf9;
+      --ink-dark: #1c252c;
+      --ink-muted: #52606d;
+      --seal-red: #b8332a;
+      --seal-red-light: #fbeae8;
+      --river-blue: #1e4e68;
+      --river-blue-light: #e6f0f5;
+      --jade-green: #1f7a4c;
+      --jade-light: #e3f5ec;
+      --gold-accent: #c58b2b;
+      --border-ink: #d8cfc0;
+      --shadow-soft: 0 8px 24px rgba(28, 37, 44, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-paper);
+      background-image: radial-gradient(circle at 20% 10%, rgba(30, 78, 104, 0.06), transparent 45%),
+                        radial-gradient(circle at 85% 80%, rgba(184, 51, 42, 0.05), transparent 45%);
+      color: var(--ink-dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* TOP HEADER */
+    .top-header {
+      background: linear-gradient(135deg, #16222a 0%, #1e4e68 100%);
+      color: #fff;
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 3px solid var(--seal-red);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand-box {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .seal-badge {
+      background: var(--seal-red);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .brand-title h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    .brand-title p {
+      font-size: 12.5px;
+      color: #cbd5e1;
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    /* STEP PROGRESS NAV */
+    .steps-ribbon {
+      background: #fffdf9;
+      border-bottom: 1px solid var(--border-ink);
+      padding: 12px 24px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+
+    .step-tab {
+      flex: 1;
+      min-width: 125px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-ink);
+      background: var(--bg-paper);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      text-align: left;
+    }
+
+    .step-tab:hover {
+      border-color: var(--river-blue);
+      transform: translateY(-1px);
+    }
+
+    .step-tab.active {
+      background: var(--river-blue);
+      color: #fff;
+      border-color: var(--river-blue);
+      box-shadow: 0 4px 12px rgba(30, 78, 104, 0.25);
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: rgba(28, 37, 44, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .step-tab.active .step-num {
+      background: var(--seal-red);
+      color: #fff;
+    }
+
+    .step-label {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    /* MAIN LAYOUT */
+    .main-container {
+      max-width: 1440px;
+      width: 100%;
+      margin: 22px auto;
+      padding: 0 24px 40px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1080px) {
+      .main-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* LEFT COLUMN: ARTWORK PREVIEW */
+    .artwork-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-ink);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow-soft);
+      position: sticky;
+      top: 90px;
+    }
+
+    .artwork-header {
+      padding: 14px 18px;
+      background: #efe7d6;
+      border-bottom: 1px solid var(--border-ink);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .artwork-header h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ink-dark);
+    }
+
+    .artwork-img-wrap {
+      padding: 12px;
+      background: #e9dfc9;
+      text-align: center;
+    }
+
+    .artwork-img-wrap img {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.12);
+      display: block;
+      cursor: zoom-in;
+    }
+
+    .artwork-nav {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-ink);
+    }
+
+    /* RIGHT COLUMN: STEP WORKSPACE */
+    .step-panel {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border-ink);
+      border-radius: 14px;
+      padding: 26px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .step-panel.active {
+      display: block;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 18px;
+      margin-bottom: 22px;
+      border-bottom: 2px solid #efe7d6;
+    }
+
+    .panel-title-group .step-badge {
+      display: inline-block;
+      background: var(--seal-red);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 5px;
+      margin-bottom: 8px;
+    }
+
+    .panel-title-group h2 {
+      font-size: 24px;
+      color: var(--ink-dark);
+      font-weight: 800;
+    }
+
+    .panel-title-group p {
+      color: var(--ink-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    /* CARDS & FORMS */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .grid-2, .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .sub-card {
+      background: var(--bg-paper);
+      border: 1px solid var(--border-ink);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .sub-card h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--river-blue);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--ink-dark);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1px solid #c5b9a5;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--ink-dark);
+      font-family: inherit;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--river-blue);
+      box-shadow: 0 0 0 3px rgba(30, 78, 104, 0.15);
+    }
+
+    textarea.form-control {
+      min-height: 90px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+    }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .btn-primary {
+      background: var(--river-blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #163c50;
+    }
+
+    .btn-red {
+      background: var(--seal-red);
+      color: #fff;
+    }
+
+    .btn-red:hover {
+      background: #982820;
+    }
+
+    .btn-green {
+      background: var(--jade-green);
+      color: #fff;
+    }
+
+    .btn-green:hover {
+      background: #175e3a;
+    }
+
+    .btn-outline {
+      background: #fff;
+      color: var(--ink-dark);
+      border: 1px solid var(--border-ink);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--river-blue);
+      color: var(--river-blue);
+    }
+
+    /* CODE & LOGS */
+    .code-box {
+      background: #141d24;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 10px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      overflow-x: auto;
+      max-height: 360px;
+      white-space: pre-wrap;
+    }
+
+    .log-line-info {
+      color: #38bdf8;
+    }
+
+    .alert-box {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      margin-top: 12px;
+      border: 1px solid transparent;
+    }
+
+    .alert-success {
+      background: var(--jade-light);
+      color: var(--jade-green);
+      border-color: #a7f3d0;
+    }
+
+    .alert-error {
+      background: var(--seal-red-light);
+      color: var(--seal-red);
+      border-color: #fecaca;
+    }
+
+    .alert-info {
+      background: var(--river-blue-light);
+      color: var(--river-blue);
+      border-color: #bae6fd;
+    }
+
+    /* TELEGRAM SIMULATOR (STEP 7, 8, 9) */
+    .tg-phone {
+      background: #e4ecf2;
+      border: 3px solid #2b3945;
+      border-radius: 18px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 520px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+    }
+
+    .tg-header {
+      background: #2481cc;
+      color: #fff;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tg-header-title {
+      font-weight: 700;
+      font-size: 14.5px;
+    }
+
+    .tg-header-sub {
+      font-size: 11.5px;
+      opacity: 0.88;
+    }
+
+    .tg-messages {
+      flex: 1;
+      padding: 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-image: radial-gradient(rgba(36, 129, 204, 0.07) 1px, transparent 0);
+      background-size: 18px 18px;
+    }
+
+    .tg-bubble {
+      max-width: 82%;
+      padding: 10px 13px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      position: relative;
+    }
+
+    .tg-bubble.user {
+      align-self: flex-end;
+      background: #eeffde;
+      color: #1c252c;
+      border-bottom-right-radius: 3px;
+    }
+
+    .tg-bubble.bot {
+      align-self: flex-start;
+      background: #ffffff;
+      color: #1c252c;
+      border-bottom-left-radius: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .tg-bubble.ignored {
+      align-self: flex-end;
+      background: #f1f5f9;
+      color: #64748b;
+      border: 1px dashed #cbd5e1;
+      font-style: italic;
+    }
+
+    .tg-sender {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #2481cc;
+      margin-bottom: 3px;
+    }
+
+    .tg-inline-kb {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .tg-inline-row {
+      display: flex;
+      gap: 5px;
+    }
+
+    .tg-inline-btn {
+      flex: 1;
+      background: rgba(36, 129, 204, 0.12);
+      color: #1b6aa5;
+      border: 1px solid rgba(36, 129, 204, 0.25);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s;
+    }
+
+    .tg-inline-btn:hover {
+      background: rgba(36, 129, 204, 0.22);
+    }
+
+    .tg-input-bar {
+      padding: 10px;
+      background: #fff;
+      border-top: 1px solid #d1dbe3;
+      display: flex;
+      gap: 8px;
+    }
+
+    .table-clean {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .table-clean th, .table-clean td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee5d5;
+      text-align: left;
+    }
+
+    .table-clean th {
+      background: #efe7d6;
+      font-weight: 700;
+    }
+
+    .badge-ok {
+      background: var(--jade-light);
+      color: var(--jade-green);
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-weight: 700;
+      font-size: 11.5px;
+    }
+
+    .badge-warn {
+      background: var(--seal-red-light);
+      color: var(--seal-red);
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-weight: 700;
+      font-size: 11.5px;
+    }
+  </style>
+<script>
+  // Bao mat Dashboard online: kem khoa quan tri (ADMIN_KEY) vao moi request /api/*.
+  // Khoa chi luu trong sessionStorage (mat khi dong tab), server kiem tra o moi request.
+  (function () {
+    const _fetch = window.fetch.bind(window);
+    window.fetch = async function (url, options) {
+      const isApi = typeof url === "string" && url.startsWith("/api/");
+      if (!isApi) return _fetch(url, options);
+      const send = (key) => {
+        const opts = Object.assign({}, options || {});
+        const headers = new Headers((options && options.headers) || {});
+        if (key) headers.set("X-Admin-Key", key);
+        opts.headers = headers;
+        return _fetch(url, opts);
+      };
+      let res = await send(sessionStorage.getItem("ADMIN_KEY") || "");
+      if (res.status === 401) {
+        const key = window.prompt("Dashboard dang khoa. Nhap ADMIN_KEY de tiep tuc:");
+        if (key) {
+          sessionStorage.setItem("ADMIN_KEY", key);
+          res = await send(key);
+        }
+      }
+      return res;
+    };
+  })();
+</script>
+</head>
+<body>
+
+  <!-- TOP HEADER -->
+  <header class="top-header">
+    <div class="brand-box">
+      <span class="seal-badge">BÍ KÍP 9 BƯỚC</span>
+      <div class="brand-title">
+        <h1>HỆ THỐNG AUTO TẠO BOT TELEGRAM TOÀN DIỆN</h1>
+        <p>Tự động hóa từ BotFather → Python → Supabase → GitHub → Render → Webhook → Tư Vấn AI → Nhóm → Kiểm Tra</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill" id="pollingStatusPill">
+        <span class="dot"></span>
+        <span id="headerStatusText">Hệ thống Sẵn sàng</span>
+      </div>
+      <button class="btn btn-red" onclick="switchStep(9); runStep9Diagnostics();">⚡ Chẩn Đoán & Test Nhanh</button>
+    </div>
+  </header>
+
+  <!-- 9 STEPS NAVIGATION BAR -->
+  <nav class="steps-ribbon" id="stepsRibbon">
+    <button class="step-tab active" onclick="switchStep(1)" data-step="1">
+      <span class="step-num">01</span>
+      <span class="step-label">Tạo Bot<br>Telegram</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(2)" data-step="2">
+      <span class="step-num">02</span>
+      <span class="step-label">Viết Mã Nguồn<br>Python</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(3)" data-step="3">
+      <span class="step-num">03</span>
+      <span class="step-label">Thiết Lập<br>Supabase</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(4)" data-step="4">
+      <span class="step-num">04</span>
+      <span class="step-label">Đưa Code<br>Lên GitHub</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(5)" data-step="5">
+      <span class="step-num">05</span>
+      <span class="step-label">Deploy Bot<br>Online (Vercel)</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(6)" data-step="6">
+      <span class="step-num">06</span>
+      <span class="step-label">Kết Nối<br>Webhook</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(7)" data-step="7">
+      <span class="step-num">07</span>
+      <span class="step-label">Bot Tư Vấn AI<br>& Thanh Toán</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(8)" data-step="8">
+      <span class="step-num">08</span>
+      <span class="step-label">Tích Hợp Nhóm<br>& Chống Spam</span>
+    </button>
+    <button class="step-tab" onclick="switchStep(9)" data-step="9">
+      <span class="step-num">09</span>
+      <span class="step-label">Kiểm Tra Bot<br>& Sửa Lỗi</span>
+    </button>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-container">
+    <!-- LEFT: ILLUSTRATION IMAGE FOR CURRENT STEP -->
+    <aside class="artwork-card">
+      <div class="artwork-header">
+        <h3 id="artworkTitle">BƯỚC 1: TẠO BOT TRÊN TELEGRAM</h3>
+        <span class="badge-ok" id="stepCounterBadge">Bước 1 / 9</span>
+      </div>
+      <div class="artwork-img-wrap">
+        <img id="stepIllustration" src="/images/857130286_1433641274769746_1960286195377603991_n.jpg" alt="Step Illustration" onclick="window.open(this.src, '_blank')" onerror="this.style.display='none'" />
+      </div>
+      <div class="artwork-nav">
+        <button class="btn btn-outline" onclick="prevStep()">⬅️ Bước trước</button>
+        <button class="btn btn-primary" onclick="nextStep()">Bước tiếp theo ➡️</button>
+      </div>
+    </aside>
+
+    <!-- RIGHT: INTERACTIVE TOOL PANELS FOR STEPS 1..9 -->
+    <main>
+
+      <!-- ==================== BƯỚC 1 ==================== -->
+      <section class="step-panel active" id="panel-step-1">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 1</span>
+            <h2>TẠO BOT TRÊN TELEGRAM (@BotFather)</h2>
+            <p>Khởi tạo Bot qua @BotFather, nhận BOT_TOKEN và tự động cấu hình danh sách lệnh cho Bot.</p>
+          </div>
+          <a href="https://t.me/BotFather" target="_blank" class="btn btn-primary">🚀 Mở @BotFather ngay</a>
+        </div>
+
+        <div class="grid-3">
+          <div class="sub-card">
+            <h4>1️⃣ Mở @BotFather</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Tìm kiếm <b>@BotFather</b> (có tích xanh xác thực) trên ứng dụng Telegram của bạn.</p>
+          </div>
+          <div class="sub-card">
+            <h4>2️⃣ Gõ lệnh /newbot</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Gửi <code>/newbot</code>, nhập tên hiển thị (VD: <i>My Awesome Bot</i>) và username kết thúc bằng <code>bot</code>.</p>
+          </div>
+          <div class="sub-card">
+            <h4>3️⃣ Nhận BOT_TOKEN</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Sao chép chuỗi HTTP API Token dạng <code>1234567890:AAH7bX9k...</code> dán vào ô bên dưới.</p>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h4>🔑 Kết nối & Xác thực BOT_TOKEN Tự Động</h4>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>BOT_TOKEN (Từ @BotFather)</label>
+              <input type="text" id="inputBotToken" class="form-control" placeholder="1234567890:AAH7bX9k...ZyR2vQmT" />
+            </div>
+            <div class="form-group">
+              <label>CHAT_ID Quản trị viên (Tùy chọn - dùng để nhận thông báo test)</label>
+              <input type="text" id="inputChatId" class="form-control" placeholder="Ví dụ: 987654321" />
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-red" onclick="verifyStep1Token()">✅ Kiểm Tra Token & Tự Động Đăng Ký Lệnh Bot</button>
+            <button class="btn btn-green" onclick="toggleLocalPolling()">▶️ Chạy Bot Ngay Trên Máy (Local Polling)</button>
+          </div>
+          <div id="step1Result"></div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 2 ==================== -->
+      <section class="step-panel" id="panel-step-2">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 2</span>
+            <h2>VIẾT MÃ NGUỒN PYTHON CHUẨN HỆ THỐNG</h2>
+            <p>Hệ thống đã tự động khởi tạo đầy đủ 4 phân hệ mã nguồn chuẩn như sơ đồ: main.py, faq_engine.py, database.py, requirements.txt.</p>
+          </div>
+          <button class="btn btn-primary" onclick="loadStep2Files()">🔄 Kiểm tra & Tải lại Mã nguồn</button>
+        </div>
+
+        <div class="grid-2">
+          <div class="sub-card">
+            <h4>📄 Cấu trúc 4 File Cốt Lõi Đã Tạo Tự Động</h4>
+            <div id="step2FilesList" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+          <div class="sub-card">
+            <h4>💻 Xem trước Mã nguồn (<span id="previewFileName">main.py</span>)</h4>
+            <pre class="code-box" id="codePreviewBox">Đang tải mã nguồn...</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 3 ==================== -->
+      <section class="step-panel" id="panel-step-3">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 3</span>
+            <h2>THIẾT LẬP SUPABASE — QUẢN LÝ DỮ LIỆU TẬP TRUNG</h2>
+            <p>Lưu trữ tập trung 4 phân hệ: Sản phẩm, Bảng giá, Câu hỏi FAQ và Khách hàng (Tự động có Local Fallback nếu chưa nhập Supabase).</p>
+          </div>
+          <a href="https://supabase.com/dashboard" target="_blank" class="btn btn-green">⚡ Mở Supabase Dashboard</a>
+        </div>
+
+        <div class="sub-card">
+          <h4>🔗 Cấu hình Kết nối Supabase Cloud (Hoặc dùng Local DB tích hợp sẵn)</h4>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>SUPABASE_URL (Project URL)</label>
+              <input type="text" id="inputSupabaseUrl" class="form-control" placeholder="https://xyzcompany.supabase.co" />
+            </div>
+            <div class="form-group">
+              <label>SUPABASE_KEY (anon / service_role key)</label>
+              <input type="password" id="inputSupabaseKey" class="form-control" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." />
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="saveSupabaseConfig()">💾 Lưu & Kiểm Tra Kết Nối</button>
+            <button class="btn btn-green" onclick="seedSupabaseData()">📤 Đẩy Dữ Liệu Mẫu Lên Supabase (Auto-Seed)</button>
+            <button class="btn btn-outline" onclick="toggleSqlModal()">📜 Xem Mã SQL Tạo 4 Bảng (supabase_schema.sql)</button>
+          </div>
+          <div id="step3Result"></div>
+          <div id="sqlSchemaWrap" style="display:none;margin-top:14px;">
+            <pre class="code-box" id="sqlSchemaCode"></pre>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="sub-card">
+            <h4>🛍️ 1. Sản phẩm (<span id="countProducts">0</span>) & 💰 2. Bảng giá (<span id="countPricing">0</span>)</h4>
+            <div style="max-height:220px;overflow-y:auto;margin-bottom:12px;">
+              <table class="table-clean" id="tableProductsPricing">
+                <thead><tr><th>Tên SP</th><th>Gói / Giá VNĐ</th><th>Giá Quốc Tế</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="grid-2">
+              <input type="text" id="newProdName" class="form-control" placeholder="Tên sản phẩm mới..." />
+              <input type="text" id="newProdPrice" class="form-control" placeholder="Giá (VD: 590.000đ)" />
+            </div>
+            <button class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="quickAddProduct()">+ Thêm Sản phẩm & Bảng giá</button>
+          </div>
+
+          <div class="sub-card">
+            <h4>❓ 3. Câu hỏi FAQ (<span id="countFaqs">0</span>) & 👥 4. Khách hàng (<span id="countCustomers">0</span>)</h4>
+            <div style="max-height:220px;overflow-y:auto;margin-bottom:12px;">
+              <table class="table-clean" id="tableFaqs">
+                <thead><tr><th>Ngôn ngữ</th><th>Câu hỏi</th><th>Trả lời</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="grid-2">
+              <input type="text" id="newFaqQ" class="form-control" placeholder="Câu hỏi FAQ mới..." />
+              <input type="text" id="newFaqA" class="form-control" placeholder="Câu trả lời tự động..." />
+            </div>
+            <button class="btn btn-outline" style="margin-top:8px;width:100%;" onclick="quickAddFaq()">+ Thêm Câu hỏi FAQ</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 4 ==================== -->
+      <section class="step-panel" id="panel-step-4">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 4</span>
+            <h2>ĐƯA CODE LÊN GITHUB (TỰ ĐỘNG HÓA GIT)</h2>
+            <p>1. Tạo repository riêng tư (Private) → 2. Upload mã nguồn → 3. Commit & Push thay đổi.</p>
+          </div>
+          <a href="https://github.com/new" target="_blank" class="btn btn-outline">🐙 Mở GitHub Tạo Repo</a>
+        </div>
+
+        <div class="sub-card">
+          <h4>🚀 Tự động hóa Git Commit & Push lên GitHub</h4>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>GitHub Repository URL (Nếu đã tạo trên GitHub)</label>
+              <input type="text" id="inputGitRepoUrl" class="form-control" placeholder="https://github.com/username/telegram-ai-bot.git" />
+            </div>
+            <div class="form-group">
+              <label>Hoặc nhập GitHub Token để Tool tự tạo Private Repo mới</label>
+              <input type="password" id="inputGithubToken" class="form-control" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (Tùy chọn)" />
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Thông điệp Commit (Commit message)</label>
+              <input type="text" id="inputGitCommitMsg" class="form-control" value="Cập nhật mã nguồn" />
+            </div>
+            <div class="form-group">
+              <label>Nhánh (Branch)</label>
+              <input type="text" id="inputGitBranch" class="form-control" value="main" />
+            </div>
+          </div>
+          <button class="btn btn-red" onclick="runStep4Git()">⚡ Thực Thi Tự Động: git add . → git commit → git push origin main</button>
+          <div id="step4Result" style="margin-top:14px;"></div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 5 ==================== -->
+      <section class="step-panel" id="panel-step-5">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 5</span>
+            <h2>DEPLOY BOT ONLINE — VERCEL / RENDER</h2>
+            <p>1. Kết nối GitHub → 2. Cấu hình biến môi trường (Environment Variables) → 3. Deploy và kiểm tra trạng thái LIVE.</p>
+          </div>
+          <a href="https://dashboard.render.com/select-repo?type=web" target="_blank" class="btn btn-primary">☁️ Mở Render Dashboard</a>
+        </div>
+
+        <div class="grid-3">
+          <div class="sub-card">
+            <h4>1️⃣ Kết nối GitHub</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Chọn <b>New Web Service</b> trên Render → Kết nối tài khoản GitHub → Chọn repository & nhánh <code>main</code>.</p>
+          </div>
+          <div class="sub-card">
+            <h4>2️⃣ Cấu hình Environment</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">File <code>render.yaml</code> đã được tạo sẵn! Điền các biến <code>BOT_TOKEN</code>, <code>CHAT_ID</code>, <code>TIMEZONE</code> bên dưới.</p>
+          </div>
+          <div class="sub-card">
+            <h4>3️⃣ Kiểm tra Live</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Khi Render báo <b>Your service is live!</b>, dán URL <code>https://...onrender.com</code> vào ô dưới để kiểm tra.</p>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h4>⚙️ Cấu hình Biến Môi Trường (Environment Variables)</h4>
+          <div class="grid-3">
+            <div class="form-group">
+              <label>BOT_TOKEN</label>
+              <input type="text" id="envBotToken" class="form-control" placeholder="1234567890:AAH..." />
+            </div>
+            <div class="form-group">
+              <label>CHAT_ID</label>
+              <input type="text" id="envChatId" class="form-control" placeholder="ID Telegram nhận thông báo" />
+            </div>
+            <div class="form-group">
+              <label>TIMEZONE</label>
+              <input type="text" id="envTimezone" class="form-control" value="Asia/Ho_Chi_Minh" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>URL Render Web Service của bạn (Sau khi Deploy Live)</label>
+            <input type="text" id="envRenderUrl" class="form-control" placeholder="https://your-bot-name.onrender.com" />
+          </div>
+          <button class="btn btn-green" onclick="saveStep5Render()">💾 Lưu Biến Môi Trường & Kiểm Tra Trạng Thái LIVE</button>
+          <div id="step5Result"></div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 6 ==================== -->
+      <section class="step-panel" id="panel-step-6">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 6</span>
+            <h2>KẾT NỐI TELEGRAM WEBHOOK (HTTPS)</h2>
+            <p>Telegram gửi tin nhắn → Webhook HTTPS chuyển dữ liệu → Bot xử lý và phản hồi tức thì.</p>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h4>🔒 Thiết lập kết nối HTTPS Webhook tự động</h4>
+          <div class="form-group">
+            <label>Địa chỉ HTTPS Server (Render URL hoặc Ngrok/Cloudflare Tunnel URL)</label>
+            <input type="text" id="inputWebhookUrl" class="form-control" placeholder="https://your-app.onrender.com/webhook" />
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-red" onclick="setStep6Webhook()">🔗 Kích Hoạt Webhook (setWebhook)</button>
+            <button class="btn btn-outline" onclick="checkStep6Webhook()">🔍 Kiểm Tra Trạng Thái Webhook</button>
+            <button class="btn btn-outline" onclick="deleteStep6Webhook()">🗑️ Xóa Webhook</button>
+            <button class="btn btn-green" onclick="toggleLocalPolling()">⚡ Bật/Tắt Local Polling (Chạy thử không cần HTTPS)</button>
+          </div>
+          <div id="step6Result" style="margin-top:14px;"></div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 7 ==================== -->
+      <section class="step-panel" id="panel-step-7">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 7</span>
+            <h2>THIẾT LẬP BOT TƯ VẤN AI & THANH TOÁN ĐA KÊNH</h2>
+            <p>1. Chọn sản phẩm → 2. Xem bảng giá → 3. Thanh toán (PayPal / USDT / QR) → 4. FAQ đa ngôn ngữ (VI / EN / RU).</p>
+          </div>
+          <button class="btn btn-primary" onclick="switchStep(9)">📱 Mở Máy Giả Lập Test Menu Tư Vấn</button>
+        </div>
+
+        <div class="grid-2">
+          <div class="sub-card">
+            <h4>💳 3. Cấu hình Thanh toán (PayPal | USDT | QR Code)</h4>
+            <div class="form-group">
+              <label>Email / Link PayPal</label>
+              <input type="text" id="payPaypalEmail" class="form-control" placeholder="payment@shop.example.com" />
+            </div>
+            <div class="form-group">
+              <label>Ví USDT (TRC20 / BEP20)</label>
+              <input type="text" id="payUsdtAddress" class="form-control" placeholder="TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE" />
+            </div>
+            <div class="form-group">
+              <label>Thông tin QR Ngân hàng</label>
+              <input type="text" id="payBankQr" class="form-control" placeholder="VIETCOMBANK - 0123456789 - SHOP AI" />
+            </div>
+          </div>
+
+          <div class="sub-card">
+            <h4>🤖 Cấu hình Cửa hàng & AI Tư Vấn (VI / EN / RU)</h4>
+            <div class="form-group">
+              <label>Website đặt hàng chính thức</label>
+              <input type="text" id="cfgShopUrl" class="form-control" placeholder="https://shop.example.com" />
+            </div>
+            <div class="form-group">
+              <label>Username Tư vấn viên (@Telegram)</label>
+              <input type="text" id="cfgSupportUser" class="form-control" placeholder="@phucanhmrt" />
+            </div>
+            <div class="form-group">
+              <label>Gemini AI API Key (Tùy chọn - giúp Bot trả lời câu hỏi mở thông minh)</label>
+              <input type="password" id="cfgGeminiKey" class="form-control" placeholder="AIzaSy..." />
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-red" onclick="saveStep7Config()">💾 Lưu Cấu Hình Tư Vấn AI & Thanh Toán</button>
+        <div id="step7Result"></div>
+      </section>
+
+      <!-- ==================== BƯỚC 8 ==================== -->
+      <section class="step-panel" id="panel-step-8">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 8</span>
+            <h2>TÍCH HỢP BOT VÀO NHÓM & CHỐNG SPAM</h2>
+            <p>1. Thêm bot vào nhóm → 2. Tắt Group Privacy trên BotFather → 3. Bật lọc keyword & chống spam thông minh.</p>
+          </div>
+          <button class="btn btn-green" onclick="runGroupDemoScenario()">🎬 Chạy Thử Kịch Bản Nhóm (Như Hình Bước 8)</button>
+        </div>
+
+        <div class="grid-3">
+          <div class="sub-card">
+            <h4>1️⃣ Thêm Bot vào nhóm</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Vào nhóm Telegram (VD: <i>Nhóm Hỗ Trợ Khách Hàng</i>), chọn <b>"Thêm thành viên"</b> và thêm Bot của bạn vào nhóm.</p>
+          </div>
+          <div class="sub-card">
+            <h4>2️⃣ Cấu hình Group Privacy</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Vào <b>@BotFather</b> → gõ <code>/mybots</code> → chọn Bot → <b>Bot Settings</b> → <b>Group Privacy</b> → chọn <b>Turn off</b>.</p>
+          </div>
+          <div class="sub-card">
+            <h4>3️⃣ Lọc Keyword & Chống Spam</h4>
+            <p style="font-size:13px;color:var(--ink-muted)">Bot chỉ trả lời khi tin nhắn có từ khóa mua hàng/hỗ trợ và tự động phớt lờ tin nhắn tán gẫu trong nhóm.</p>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h4>🛡️ Thiết lập Bộ Lọc Từ Khóa (Keyword Filter) & Chống Spam Nhóm</h4>
+          <div class="form-group">
+            <label>Danh sách từ khóa kích hoạt phản hồi trong nhóm (Cách nhau bởi dấu phẩy)</label>
+            <textarea id="groupTriggerKeywords" class="form-control"></textarea>
+          </div>
+          <div class="grid-3">
+            <div class="form-group">
+              <label>Phí giao hàng Nội thành (/ship)</label>
+              <input type="text" id="cfgShipInner" class="form-control" value="20.000đ" />
+            </div>
+            <div class="form-group">
+              <label>Phí giao hàng Tỉnh (/ship)</label>
+              <input type="text" id="cfgShipProv" class="form-control" value="30.000đ" />
+            </div>
+            <div class="form-group">
+              <label>Giới hạn chống Spam (Số tin/phút/người)</label>
+              <input type="number" id="groupMaxPerMin" class="form-control" value="6" />
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="saveStep8Group()">💾 Lưu Cấu Hình Lọc Nhóm & Chống Spam</button>
+          <div id="step8Result"></div>
+        </div>
+      </section>
+
+      <!-- ==================== BƯỚC 9 ==================== -->
+      <section class="step-panel" id="panel-step-9">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">BƯỚC 9</span>
+            <h2>KIỂM TRA BOT, GIẢ LẬP CHAT & SỬA LỖI</h2>
+            <p>1. Test lệnh /start → 2. Kiểm tra Webhook → 3. Đối chiếu FAQ & bảng giá → 4. Sửa lỗi và Deploy lại.</p>
+          </div>
+          <button class="btn btn-red" onclick="runStep9Diagnostics()">🔍 Chạy Kiểm Tra Toàn Diện 4 Bước</button>
+        </div>
+
+        <div class="grid-2">
+          <!-- TRÌNH GIẢ LẬP TELEGRAM TRỰC TIẾP -->
+          <div>
+            <div class="tg-phone">
+              <div class="tg-header">
+                <div>
+                  <div class="tg-header-title" id="simHeaderTitle">🤖 Telegram Bot Simulator</div>
+                  <div class="tg-header-sub" id="simHeaderSub">Chế độ: Chat Riêng Tư (Tư vấn AI)</div>
+                </div>
+                <select id="simChatType" onchange="onSimModeChange()" style="padding:5px 8px;border-radius:6px;border:none;font-size:12px;font-weight:700;">
+                  <option value="private">👤 Chat Riêng (/start)</option>
+                  <option value="group">👥 Nhóm Hỗ Trợ (Bước 8)</option>
+                </select>
+              </div>
+
+              <div class="tg-messages" id="simMessages"></div>
+
+              <div style="padding:6px 10px;background:#eef3f7;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid #d8e2ea;">
+                <button class="btn btn-outline" style="padding:4px 9px;font-size:11.5px;" onclick="sendSimMessage('/start')">/start</button>
+                <button class="btn btn-outline" style="padding:4px 9px;font-size:11.5px;" onclick="sendSimMessage('Mình cần tư vấn sản phẩm')">Tư vấn SP (Bước 7)</button>
+                <button class="btn btn-outline" style="padding:4px 9px;font-size:11.5px;" onclick="sendSimMessage('/ship')">/ship</button>
+                <button class="btn btn-outline" style="padding:4px 9px;font-size:11.5px;" onclick="runGroupDemoScenario()">Test Nhóm (Bước 8)</button>
+              </div>
+
+              <div class="tg-input-bar">
+                <input type="text" id="simInputText" class="form-control" placeholder="Nhập tin nhắn thử nghiệm (VD: /start)..." onkeydown="if(event.key==='Enter') sendSimMessage()" />
+                <button class="btn btn-primary" onclick="sendSimMessage()">Gửi</button>
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;cursor:pointer;">
+              <input type="checkbox" id="chkSendRealTelegram" />
+              Đồng thời gửi tin nhắn thật tới <b>CHAT_ID</b> trên Telegram của bạn
+            </label>
+          </div>
+
+          <!-- RENDER LOGS & 4 CHECKLIST ITEMS -->
+          <div>
+            <div class="sub-card">
+              <h4>🖥️ Render Logs & Nhật ký Hệ thống</h4>
+              <pre class="code-box" id="renderLogsBox" style="max-height:190px;"></pre>
+            </div>
+
+            <div class="sub-card">
+              <h4>✅ Bảng Kiểm Tra 4 Nhóm Lỗi & Trạng Thái Webhook</h4>
+              <div id="diagChecklistWrap" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+              <h4 style="margin-top:10px;">🌐 Kết quả kiểm tra Webhook (api.telegram.org)</h4>
+              <pre class="code-box" id="webhookJsonBox" style="max-height:140px;"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    const STEP_TITLES = {
+      1: "BƯỚC 1: TẠO BOT TRÊN TELEGRAM",
+      2: "BƯỚC 2: VIẾT MÃ NGUỒN PYTHON",
+      3: "BƯỚC 3: THIẾT LẬP SUPABASE",
+      4: "BƯỚC 4: ĐƯA CODE LÊN GITHUB",
+      5: "BƯỚC 5: DEPLOY BOT ONLINE (VERCEL / RENDER)",
+      6: "BƯỚC 6: KẾT NỐI TELEGRAM WEBHOOK",
+      7: "BƯỚC 7: THIẾT LẬP BOT TƯ VẤN AI",
+      8: "BƯỚC 8: TÍCH HỢP BOT VÀO NHÓM",
+      9: "BƯỚC 9: KIỂM TRA BOT & SỬA LỖI"
+    };
+
+    const STEP_IMAGES = {{ step_images | tojson }};
+    let currentStep = 1;
+    let cachedFiles = [];
+
+    function switchStep(step) {
+      currentStep = step;
+      document.querySelectorAll(".step-tab").forEach(btn => {
+        btn.classList.toggle("active", parseInt(btn.dataset.step) === step);
+      });
+      document.querySelectorAll(".step-panel").forEach(panel => {
+        panel.classList.remove("active");
+      });
+      const target = document.getElementById(`panel-step-${step}`);
+      if (target) target.classList.add("active");
+
+      document.getElementById("artworkTitle").textContent = STEP_TITLES[step];
+      document.getElementById("stepCounterBadge").textContent = `Bước ${step} / 9`;
+      const _ill = document.getElementById("stepIllustration"); _ill.style.display = ""; _ill.src = `/images/${STEP_IMAGES[step]}`;
+
+      if (step === 2) loadStep2Files();
+      if (step === 9) runStep9Diagnostics();
+    }
+
+    function prevStep() {
+      if (currentStep > 1) switchStep(currentStep - 1);
+    }
+
+    function nextStep() {
+      if (currentStep < 9) switchStep(currentStep + 1);
+    }
+
+    async function loadSystemState() {
+      try {
+        const r = await fetch("/api/state");
+        const data = await r.json();
+        if (!data.ok) return;
+
+        // Điền Env
+        const env = data.env || {};
+        document.getElementById("inputBotToken").value = env.BOT_TOKEN || "";
+        document.getElementById("inputChatId").value = env.CHAT_ID || "";
+        document.getElementById("envBotToken").value = env.BOT_TOKEN || "";
+        document.getElementById("envChatId").value = env.CHAT_ID || "";
+        document.getElementById("envTimezone").value = env.TIMEZONE || "Asia/Ho_Chi_Minh";
+        document.getElementById("inputSupabaseUrl").value = env.SUPABASE_URL || "";
+        document.getElementById("inputSupabaseKey").value = env.SUPABASE_KEY || "";
+        document.getElementById("inputWebhookUrl").value = env.WEBHOOK_URL || "";
+        document.getElementById("envRenderUrl").value = (env.WEBHOOK_URL || "").replace(/\/webhook$/, "");
+        document.getElementById("cfgGeminiKey").value = env.GEMINI_API_KEY || "";
+
+        // Điền Database
+        const dbData = data.database || {};
+        renderDatabaseTables(dbData);
+
+        // Điền Settings Bước 7 & 8
+        const s = dbData.settings || {};
+        const pay = s.payment || {};
+        document.getElementById("payPaypalEmail").value = pay.paypal_email || "";
+        document.getElementById("payUsdtAddress").value = pay.usdt_address || "";
+        document.getElementById("payBankQr").value = pay.bank_qr_info || "";
+        document.getElementById("cfgShopUrl").value = s.shop_url || "https://shop.example.com";
+        document.getElementById("cfgSupportUser").value = s.support_username || "@phucanhmrt";
+        document.getElementById("cfgShipInner").value = s.shipping_inner_city || "20.000đ";
+        document.getElementById("cfgShipProv").value = s.shipping_province || "30.000đ";
+
+        const gcfg = s.group_config || {};
+        document.getElementById("groupTriggerKeywords").value = (gcfg.trigger_keywords || []).join(", ");
+        document.getElementById("groupMaxPerMin").value = gcfg.max_msgs_per_minute || 6;
+
+        // Trạng thái Polling
+        updatePollingBadge(data.polling && data.polling.running);
+
+        // Logs
+        if (data.logs) {
+          document.getElementById("renderLogsBox").textContent = data.logs.join("\n");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function updatePollingBadge(running) {
+      const txt = document.getElementById("headerStatusText");
+      if (running) {
+        txt.textContent = "Đang chạy Local Polling (Live)";
+      } else {
+        txt.textContent = "Hệ thống Sẵn sàng";
+      }
+    }
+
+    function renderDatabaseTables(dbData) {
+      const products = dbData.products || [];
+      const pricing = dbData.pricing || [];
+      const faqs = dbData.faqs || [];
+      const customers = dbData.customers || [];
+
+      document.getElementById("countProducts").textContent = products.length;
+      document.getElementById("countPricing").textContent = pricing.length;
+      document.getElementById("countFaqs").textContent = faqs.length;
+      document.getElementById("countCustomers").textContent = customers.length;
+
+      const tbodyPP = document.querySelector("#tableProductsPricing tbody");
+      tbodyPP.innerHTML = pricing.map(p => `
+        <tr>
+          <td><b>${p.name}</b></td>
+          <td>${p.plan || ""} — <span class="badge-ok">${p.price_vnd}</span></td>
+          <td>${p.price_usd || ""} / ${p.price_usdt || ""}</td>
+        </tr>
+      `).join("");
+
+      const tbodyFaq = document.querySelector("#tableFaqs tbody");
+      tbodyFaq.innerHTML = faqs.map(f => `
+        <tr>
+          <td><span class="badge-ok">${f.lang || "VI"}</span></td>
+          <td><b>${f.question}</b></td>
+          <td>${f.answer}</td>
+        </tr>
+      `).join("");
+    }
+
+    // ==================== BƯỚC 1 ====================
+    async function verifyStep1Token() {
+      const token = document.getElementById("inputBotToken").value.trim();
+      const chatId = document.getElementById("inputChatId").value.trim();
+      const box = document.getElementById("step1Result");
+      box.innerHTML = `<div class="alert-box alert-info">Đang kết nối tới Telegram API...</div>`;
+
+      const r = await fetch("/api/step1/verify", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({BOT_TOKEN: token, CHAT_ID: chatId})
+      });
+      const data = await r.json();
+      if (data.ok) {
+        box.innerHTML = `<div class="alert-box alert-success">✅ <b>${data.message}</b><br>Đã tự động lưu vào <code>.env</code> và cài đặt menu lệnh (/start, /products, /price, /pay, /faq, /ship, /lang, /support).</div>`;
+        loadSystemState();
+      } else {
+        box.innerHTML = `<div class="alert-box alert-error">⚠️ ${data.message}</div>`;
+      }
+    }
+
+    async function toggleLocalPolling() {
+      const r = await fetch("/api/step6/webhook", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "toggle_polling"})
+      });
+      const data = await r.json();
+      updatePollingBadge(data.running);
+      alert(data.message || "Đã cập nhật trạng thái Polling.");
+      loadSystemState();
+    }
+
+    // ==================== BƯỚC 2 ====================
+    async function loadStep2Files() {
+      const r = await fetch("/api/step2/files");
+      const data = await r.json();
+      if (!data.ok) return;
+      cachedFiles = data.files || [];
+      const listEl = document.getElementById("step2FilesList");
+      listEl.innerHTML = cachedFiles.map((f, idx) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fff;border:1px solid var(--border-ink);border-radius:8px;cursor:pointer;" onclick="previewStep2File(${idx})">
+          <div>
+            <b>📄 ${f.name}</b>
+            <div style="font-size:12px;color:var(--ink-muted)">Kích thước: ${f.size} bytes</div>
+          </div>
+          <span class="badge-ok">Đã tạo ✔</span>
+        </div>
+      `).join("");
+      if (cachedFiles.length > 0) previewStep2File(0);
+    }
+
+    function previewStep2File(idx) {
+      const f = cachedFiles[idx];
+      if (!f) return;
+      document.getElementById("previewFileName").textContent = f.name;
+      document.getElementById("codePreviewBox").textContent = f.preview;
+    }
+
+    // ==================== BƯỚC 3 ====================
+    async function saveSupabaseConfig() {
+      const url = document.getElementById("inputSupabaseUrl").value.trim();
+      const key = document.getElementById("inputSupabaseKey").value.trim();
+      const r = await fetch("/api/step3/supabase", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "save_credentials", SUPABASE_URL: url, SUPABASE_KEY: key})
+      });
+      const data = await r.json();
+      document.getElementById("sqlSchemaCode").textContent = data.sql || "";
+      const st = data.status || {};
+      document.getElementById("step3Result").innerHTML = `
+        <div class="alert-box ${st.ok ? 'alert-success' : 'alert-error'}">
+          <b>Chế độ: ${st.mode}</b> — ${st.message}
+        </div>
+      `;
+    }
+
+    async function seedSupabaseData() {
+      const r = await fetch("/api/step3/supabase", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "seed"})
+      });
+      const data = await r.json();
+      const box = document.getElementById("step3Result");
+      if (data.ok) {
+        box.innerHTML = `<div class="alert-box alert-success">✅ Đã đồng bộ dữ liệu lên Supabase: <code>${JSON.stringify(data.seeded)}</code></div>`;
+      } else {
+        box.innerHTML = `<div class="alert-box alert-error">⚠️ ${data.message}</div>`;
+      }
+    }
+
+    async function toggleSqlModal() {
+      const wrap = document.getElementById("sqlSchemaWrap");
+      if (wrap.style.display === "none") {
+        const r = await fetch("/api/step3/supabase", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({action: "status"})
+        });
+        const data = await r.json();
+        document.getElementById("sqlSchemaCode").textContent = data.sql || "";
+        wrap.style.display = "block";
+      } else {
+        wrap.style.display = "none";
+      }
+    }
+
+    async function quickAddProduct() {
+      const name = document.getElementById("newProdName").value.trim();
+      const price = document.getElementById("newProdPrice").value.trim();
+      if (!name || !price) return alert("Vui lòng nhập tên sản phẩm và giá!");
+      await fetch("/api/step3/supabase", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          action: "add_product",
+          item: {name, description: "Sản phẩm mới cập nhật", in_stock: true, order_url: "https://shop.example.com"}
+        })
+      });
+      await fetch("/api/step3/supabase", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          action: "add_pricing",
+          item: {name, plan: "Gói Tiêu Chuẩn", price_vnd: price, price_usd: "$25", price_usdt: "25 USDT", details: "Hỗ trợ 24/7"}
+        })
+      });
+      document.getElementById("newProdName").value = "";
+      document.getElementById("newProdPrice").value = "";
+      loadSystemState();
+    }
+
+    async function quickAddFaq() {
+      const q = document.getElementById("newFaqQ").value.trim();
+      const a = document.getElementById("newFaqA").value.trim();
+      if (!q || !a) return alert("Vui lòng nhập câu hỏi và câu trả lời!");
+      await fetch("/api/step3/supabase", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          action: "add_faq",
+          item: {lang: "VI", question: q, answer: a, keywords: q.toLowerCase().split(" ")}
+        })
+      });
+      document.getElementById("newFaqQ").value = "";
+      document.getElementById("newFaqA").value = "";
+      loadSystemState();
+    }
+
+    // ==================== BƯỚC 4 ====================
+    async function runStep4Git() {
+      const repo_url = document.getElementById("inputGitRepoUrl").value.trim();
+      const github_token = document.getElementById("inputGithubToken").value.trim();
+      const commit_msg = document.getElementById("inputGitCommitMsg").value.trim();
+      const branch = document.getElementById("inputGitBranch").value.trim();
+      const box = document.getElementById("step4Result");
+      box.innerHTML = `<div class="alert-box alert-info">Đang thực thi chuỗi lệnh Git...</div>`;
+
+      const r = await fetch("/api/step4/git", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({repo_url, github_token, commit_msg, branch, is_private: true})
+      });
+      const data = await r.json();
+      const logsHtml = (data.steps || []).map(s => `
+        <div style="margin-bottom:6px;">
+          <b style="color:${s.ok ? '#4ade80' : '#f87171'}">$ ${s.cmd}</b>
+          <div>${s.output || "(Thành công)"}</div>
+        </div>
+      `).join("");
+      box.innerHTML = `<div class="code-box">${logsHtml}</div>`;
+    }
+
+    // ==================== BƯỚC 5 ====================
+    async function saveStep5Render() {
+      const BOT_TOKEN = document.getElementById("envBotToken").value.trim();
+      const CHAT_ID = document.getElementById("envChatId").value.trim();
+      const TIMEZONE = document.getElementById("envTimezone").value.trim();
+      const renderUrl = document.getElementById("envRenderUrl").value.trim();
+      const WEBHOOK_URL = renderUrl ? (renderUrl.endsWith("/webhook") ? renderUrl : `${renderUrl.replace(/\/$/, "")}/webhook`) : "";
+
+      const r = await fetch("/api/step5/render", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({BOT_TOKEN, CHAT_ID, TIMEZONE, WEBHOOK_URL})
+      });
+      const data = await r.json();
+      let liveHtml = "";
+      if (data.live_check) {
+        liveHtml = data.live_check.ok
+          ? `<br>🟢 <b>Kiểm tra Live thành công:</b> Server phản hồi <code>${data.live_check.response}</code>`
+          : `<br>🟠 <b>Server chưa phản hồi:</b> ${data.live_check.error || data.live_check.status_code}`;
+      }
+      document.getElementById("step5Result").innerHTML = `
+        <div class="alert-box alert-success">✅ ${data.message}${liveHtml}</div>
+      `;
+      loadSystemState();
+    }
+
+    // ==================== BƯỚC 6 ====================
+    async function setStep6Webhook() {
+      const url = document.getElementById("inputWebhookUrl").value.trim();
+      const box = document.getElementById("step6Result");
+      const r = await fetch("/api/step6/webhook", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "set", WEBHOOK_URL: url})
+      });
+      const data = await r.json();
+      box.innerHTML = `<pre class="code-box">${JSON.stringify(data, null, 2)}</pre>`;
+    }
+
+    async function checkStep6Webhook() {
+      const r = await fetch("/api/step6/webhook", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "info"})
+      });
+      const data = await r.json();
+      document.getElementById("step6Result").innerHTML = `<pre class="code-box">${JSON.stringify(data.webhook_info, null, 2)}</pre>`;
+    }
+
+    async function deleteStep6Webhook() {
+      const r = await fetch("/api/step6/webhook", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "delete"})
+      });
+      const data = await r.json();
+      document.getElementById("step6Result").innerHTML = `<pre class="code-box">${JSON.stringify(data, null, 2)}</pre>`;
+    }
+
+    // ==================== BƯỚC 7 ====================
+    async function saveStep7Config() {
+      const payload = {
+        shop_url: document.getElementById("cfgShopUrl").value.trim(),
+        support_username: document.getElementById("cfgSupportUser").value.trim(),
+        GEMINI_API_KEY: document.getElementById("cfgGeminiKey").value.trim(),
+        payment: {
+          paypal_email: document.getElementById("payPaypalEmail").value.trim(),
+          usdt_address: document.getElementById("payUsdtAddress").value.trim(),
+          bank_qr_info: document.getElementById("payBankQr").value.trim()
+        }
+      };
+      const r = await fetch("/api/step7/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      if (data.ok) {
+        document.getElementById("step7Result").innerHTML = `<div class="alert-box alert-success">✅ Đã cập nhật cấu hình Bot Tư Vấn AI, Thanh Toán (PayPal, USDT, QR) & Đa ngôn ngữ (VI/EN/RU)!</div>`;
+      }
+    }
+
+    // ==================== BƯỚC 8 ====================
+    async function saveStep8Group() {
+      const keywords = document.getElementById("groupTriggerKeywords").value;
+      const maxPerMin = parseInt(document.getElementById("groupMaxPerMin").value || "6");
+      const shipInner = document.getElementById("cfgShipInner").value.trim();
+      const shipProv = document.getElementById("cfgShipProv").value.trim();
+
+      await fetch("/api/step7/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({shipping_inner_city: shipInner, shipping_province: shipProv})
+      });
+
+      const r = await fetch("/api/step8/group", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          group_config: {
+            enabled: true,
+            keyword_filter_enabled: true,
+            anti_spam_enabled: true,
+            max_msgs_per_minute: maxPerMin,
+            trigger_keywords: keywords
+          }
+        })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        document.getElementById("step8Result").innerHTML = `<div class="alert-box alert-success">✅ Đã lưu bộ lọc Keyword & Chống Spam Nhóm thành công!</div>`;
+      }
+    }
+
+    // ==================== BƯỚC 9: SIMULATOR & DIAGNOSTICS ====================
+    function onSimModeChange() {
+      const mode = document.getElementById("simChatType").value;
+      document.getElementById("simHeaderTitle").textContent = mode === "group" ? "👥 Nhóm Hỗ Trợ Khách Hàng (1.284 thành viên)" : "🤖 Telegram Bot Tư Vấn AI";
+      document.getElementById("simHeaderSub").textContent = mode === "group" ? "Bật lọc Keyword & Chống Spam (Bước 8)" : "Chế độ: Chat Riêng Tư (Bước 7 & 9)";
+    }
+
+    function appendSimBubble(role, text, senderName = "", replyMarkup = null, qrUrl = null) {
+      const container = document.getElementById("simMessages");
+      const div = document.createElement("div");
+      div.className = `tg-bubble ${role}`;
+
+      let html = "";
+      if (senderName) {
+        html += `<div class="tg-sender">${senderName}</div>`;
+      }
+      html += `<div>${escapeHtml(text)}</div>`;
+
+      if (qrUrl) {
+        html += `<div style="margin-top:8px;text-align:center;"><img src="${qrUrl}" style="width:150px;height:150px;border-radius:8px;border:1px solid #ccc;" /></div>`;
+      }
+
+      if (replyMarkup && replyMarkup.inline_keyboard) {
+        html += `<div class="tg-inline-kb">`;
+        for (const row of replyMarkup.inline_keyboard) {
+          html += `<div class="tg-inline-row">`;
+          for (const btn of row) {
+            if (btn.callback_data) {
+              html += `<button class="tg-inline-btn" onclick="sendSimCallback('${btn.callback_data}', '${escapeHtml(btn.text)}')">${escapeHtml(btn.text)}</button>`;
+            } else if (btn.url) {
+              html += `<a class="tg-inline-btn" href="${btn.url}" target="_blank" style="text-decoration:none;">🔗 ${escapeHtml(btn.text)}</a>`;
+            }
+          }
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+
+      div.innerHTML = html;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    async function sendSimMessage(customText = null, customSender = null) {
+      const input = document.getElementById("simInputText");
+      const text = customText !== null ? customText : input.value.trim();
+      if (!text) return;
+      if (customText === null) input.value = "";
+
+      const chat_type = document.getElementById("simChatType").value;
+      const send_real = document.getElementById("chkSendRealTelegram").checked;
+      const sender = customSender || (chat_type === "group" ? "Thành viên Nhóm" : "Bạn");
+
+      appendSimBubble("user", text, sender);
+
+      const r = await fetch("/api/step9/simulate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          text,
+          chat_type,
+          full_name: sender,
+          user_id: "sim_" + sender,
+          send_real
+        })
+      });
+      const data = await r.json();
+      const rep = data.reply || {};
+      if (rep.responded && rep.text) {
+        appendSimBubble("bot", rep.text, "🤖 Bot", rep.reply_markup, rep.qr_url);
+      } else {
+        appendSimBubble("ignored", `[Bỏ qua bởi Bộ lọc Nhóm Bước 8: ${rep.reason || "Tin nhắn thường không chứa keyword"}]`, "🛡️ Anti-Spam Filter");
+      }
+    }
+
+    async function sendSimCallback(callbackData, labelText) {
+      appendSimBubble("user", `[Bấm nút: ${labelText}]`, "Bạn");
+      const send_real = document.getElementById("chkSendRealTelegram").checked;
+      const r = await fetch("/api/step9/simulate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          text: "",
+          callback_data: callbackData,
+          chat_type: "private",
+          send_real
+        })
+      });
+      const data = await r.json();
+      const rep = data.reply || {};
+      if (rep.responded && rep.text) {
+        appendSimBubble("bot", rep.text, "🤖 Bot", rep.reply_markup, rep.qr_url);
+      }
+    }
+
+    async function runGroupDemoScenario() {
+      switchStep(9);
+      document.getElementById("simChatType").value = "group";
+      onSimModeChange();
+      document.getElementById("simMessages").innerHTML = "";
+
+      const messages = [
+        {sender: "Lan Anh", text: "Shop ơi, tôi muốn hỏi về phí giao hàng?"},
+        {sender: "Minh Đức", text: "Sản phẩm này còn hàng không ạ?"},
+        {sender: "Hoàng Nam", text: "Anh em xem trận tối nay nhé!"},
+        {sender: "Thu Hương", text: "@Minh Đức đi cà phê không? 😊"},
+        {sender: "Quang Huy", text: "File báo cáo đây nhé mọi người: report.pdf"}
+      ];
+
+      for (const m of messages) {
+        await sendSimMessage(m.text, m.sender);
+        await new Promise(res => setTimeout(res, 350));
+      }
+    }
+
+    async function runStep9Diagnostics() {
+      const r = await fetch("/api/step9/diagnostics");
+      const data = await r.json();
+      if (!data.ok) return;
+
+      if (data.logs) {
+        document.getElementById("renderLogsBox").textContent = data.logs.join("\n");
+      }
+
+      document.getElementById("webhookJsonBox").textContent = JSON.stringify(data.webhook_info, null, 2);
+
+      const cl = data.checklist || {};
+      const wrap = document.getElementById("diagChecklistWrap");
+      wrap.innerHTML = Object.values(cl).map(item => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#fff;border:1px solid var(--border-ink);border-radius:8px;">
+          <div>
+            <b>${item.name}</b>
+            <div style="font-size:12px;color:var(--ink-muted)">${item.detail}</div>
+          </div>
+          <span class="${item.passed ? 'badge-ok' : 'badge-warn'}">${item.passed ? '✔ Hoạt động tốt' : '⚠ Cần kiểm tra'}</span>
+        </div>
+      `).join("");
+
+      const simContainer = document.getElementById("simMessages");
+      if (simContainer.children.length === 0 && data.start_test) {
+        appendSimBubble("user", "/start", "Bạn");
+        appendSimBubble("bot", data.start_test.text, "🤖 Bot", data.start_test.reply_markup);
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadSystemState();
+      runStep9Diagnostics();
+    });
+  </script>
+</body>
+</html>
