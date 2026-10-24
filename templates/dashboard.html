@@ -230,6 +230,18 @@
       cursor: zoom-in;
     }
 
+    /* SO DO TU DUY (MINDMAP) THAY ANH MINH HOA - ve bang SVG, khong can file anh */
+    .mindmap-wrap {
+      padding: 10px 8px 6px;
+      background: #f7f1e3;
+    }
+
+    .mindmap-wrap svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
     .artwork-nav {
       display: flex;
       justify-content: space-between;
@@ -708,9 +720,7 @@
         <h3 id="artworkTitle">BƯỚC 1: TẠO BOT TRÊN TELEGRAM</h3>
         <span class="badge-ok" id="stepCounterBadge">Bước 1 / 9</span>
       </div>
-      <div class="artwork-img-wrap">
-        <img id="stepIllustration" src="/images/857130286_1433641274769746_1960286195377603991_n.jpg" alt="Step Illustration" onclick="window.open(this.src, '_blank')" onerror="this.style.display='none'" />
-      </div>
+      <div class="mindmap-wrap" id="stepMindmap" role="img" aria-label="Sơ đồ tư duy của bước hiện tại"></div>
       <div class="artwork-nav">
         <button class="btn btn-outline" onclick="prevStep()">⬅️ Bước trước</button>
         <button class="btn btn-primary" onclick="nextStep()">Bước tiếp theo ➡️</button>
@@ -1149,7 +1159,94 @@
       9: "BƯỚC 9: KIỂM TRA BOT & SỬA LỖI"
     };
 
-    const STEP_IMAGES = {{ step_images | tojson }};
+    // SƠ ĐỒ TƯ DUY TỪNG BƯỚC: nút trung tâm + 4 nhánh chính (mỗi nhánh 3 ý nhỏ)
+    const STEP_MINDMAPS = {
+      1: { color: "#2563eb", label: ["TẠO BOT", "TELEGRAM"], branches: [
+        ["Mở @BotFather", ["/newbot để tạo bot mới", "Đặt tên hiển thị cho bot", "Username kết thúc bằng 'bot'"]],
+        ["Nhận BOT_TOKEN", ["Dạng 1234567890:AAH7bX...", "Giữ bí mật như mật khẩu", "Dán vào ô Bước 1 bên phải"]],
+        ["Xác thực Token", ["getMe kiểm tra bot thật", "setMyCommands cài menu lệnh", "Báo lỗi ngay nếu token sai"]],
+        ["Menu lệnh sẵn có", ["/start  /products  /price", "/pay  /faq  /ship  /lang", "/support gặp tư vấn viên"]]
+      ]},
+      2: { color: "#7c3aed", label: ["MÃ NGUỒN", "PYTHON"], branches: [
+        ["main.py — Máy chủ", ["Flask + Webhook / Polling", "Dashboard 9 bước /dashboard", "Xử lý tin nhắn & nút bấm"]],
+        ["faq_engine.py", ["Trả lời FAQ VI / EN / RU", "Tư vấn AI & kịch bản nhóm", "Lọc keyword, chống spam"]],
+        ["database.py", ["Supabase + JSON fallback", "4 phân hệ dữ liệu", "Cache đọc 20 giây"]],
+        ["requirements.txt", ["flask • requests • dotenv", "gunicorn chạy trên server", "rich cho giao diện CLI"]]
+      ]},
+      3: { color: "#059669", label: ["SUPABASE", "DỮ LIỆU"], branches: [
+        ["4 bảng dữ liệu", ["products — Sản phẩm", "pricing — Bảng giá", "faqs — Câu hỏi  •  customers — KH"]],
+        ["Chạy SQL tạo bảng", ["Mở SQL Editor trên Supabase", "Dán supabase_schema.sql", "Bấm Run để tạo 4 bảng"]],
+        ["Kết nối hệ thống", ["Dán SUPABASE_URL + KEY", "Bấm Lưu & Kiểm tra kết nối", "Chỉ dùng key ở phía server"]],
+        ["Local fallback", ["Chưa có Supabase vẫn chạy", "Dữ liệu ở data/bot_database.json", "Trên Vercel: tự chuyển /tmp"]]
+      ]},
+      4: { color: "#374151", label: ["GITHUB", "ĐƯA CODE"], branches: [
+        ["Khởi tạo Git", ["git init • add • commit", ".gitignore chặn file .env", "Chỉ chạy trên máy local"]],
+        ["Tạo Repository", ["Qua GitHub API nếu có token", "Hoặc tạo sẵn rồi dán URL", "Mặc định repo Private"]],
+        ["Push lên nhánh main", ["remote origin + push -u", "Token được che trong log", "Kiểm tra file trên GitHub"]],
+        ["Từ đây về sau", ["Mỗi lần push code mới", "Vercel tự động deploy lại", "Không cần dùng Bước 4 nữa"]]
+      ]},
+      5: { color: "#db2777", label: ["DEPLOY", "VERCEL"], branches: [
+        ["Import từ GitHub", ["vercel.com → Add New Project", "Chọn repo bot-tele-2026", "Tự nhận diện api/index.py"]],
+        ["Biến môi trường", ["BOT_TOKEN — bắt buộc", "ADMIN_KEY — khóa Dashboard", "SUPABASE_URL + SUPABASE_KEY"]],
+        ["Deploy & kiểm tra", ["Mở /ping thấy 'Xin chào!'", "Mở /dashboard nhập ADMIN_KEY", "Xem log trong Vercel"]],
+        ["Render — phương án 2", ["render.yaml Blueprint sẵn có", "Procfile chạy gunicorn", "Môi trường nào cũng được"]]
+      ]},
+      6: { color: "#0891b2", label: ["WEBHOOK", "KẾT NỐI"], branches: [
+        ["Set Webhook HTTPS", ["URL kết thúc bằng /webhook", "Kèm secret_token tùy chọn", "Telegram đẩy tin về server"]],
+        ["getWebhookInfo", ["Kiểm tra trạng thái thật", "pending_update_count = 0", "Có URL = đã gắn thành công"]],
+        ["Local Polling", ["Chỉ chạy trên máy nhà", "Tự xóa webhook trước khi bật", "Trên Vercel sẽ bị chặn"]],
+        ["Xóa / đổi Webhook", ["deleteWebhook khi cần", "Đổi URL khi chuyển server", "Không ảnh hưởng dữ liệu"]]
+      ]},
+      7: { color: "#ea580c", label: ["TƯ VẤN AI", "THANH TOÁN"], branches: [
+        ["Luồng tư vấn chuẩn", ["1. Chọn sản phẩm", "2. Xem bảng giá", "3. Thanh toán → hoàn tất"]],
+        ["Thanh toán đa kênh", ["PayPal — link / email", "USDT TRC20 / BEP20", "QR ngân hàng quét nhanh"]],
+        ["FAQ đa ngôn ngữ", ["VI • EN • RU đầy đủ", "Tự nhận diện ngôn ngữ", "Nút bấm đổi ngôn ngữ"]],
+        ["Gemini AI tùy chọn", ["Đặt GEMINI_API_KEY", "Trả lời ngoài danh sách FAQ", "Không có key vẫn chạy tốt"]]
+      ]},
+      8: { color: "#4f46e5", label: ["NHÓM", "CHỐNG SPAM"], branches: [
+        ["Group Privacy", ["BotFather → Bot Settings", "Cho phép đọc tin nhóm", "can_read_all_group_messages"]],
+        ["Lọc từ khóa", ["Chỉ trả lời đúng chủ đề", "Bỏ qua tin tán gẫu", "Danh sách từ khóa tùy chỉnh"]],
+        ["Chống spam", ["Cooldown 5 giây / người", "Tối đa 6 tin mỗi phút", "Rate limit tự động"]],
+        ["Kịch bản trong nhóm", ["/ship — tra phí giao hàng", "Hỏi còn hàng → link đặt", "Hỏi giá → gửi bảng giá"]]
+      ]},
+      9: { color: "#b45309", label: ["KIỂM TRA", "SỬA LỖI"], branches: [
+        ["Giả lập chat (Simulator)", ["Test /start ngay trên web", "Bấm thử nút FAQ / Bảng giá", "Mô phỏng cả nhóm hỗ trợ"]],
+        ["Chẩn đoán 4 nhóm lỗi", ["Lỗi kết nối • Lỗi webhook", "Lỗi câu trả lời • Lỗi deploy", "Đánh dấu đạt / chưa đạt"]],
+        ["Đối chiếu dữ liệu", ["FAQ đủ 3 ngôn ngữ chưa", "Sản phẩm & bảng giá khớp", "Thiếu thì bổ sung ở Bước 3"]],
+        ["Nhật ký hệ thống", ["Log hiện trực tiếp trên web", "Lần vết lỗi theo thời gian", "Kết hợp log Vercel / Render"]]
+      ]}
+    };
+
+    function escXml(t) {
+      return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function renderMindmap(step) {
+      const mm = STEP_MINDMAPS[step];
+      const box = document.getElementById("stepMindmap");
+      if (!mm || !box) return;
+      const cyCenter = 242;
+      const branchYs = [58, 172, 286, 400];
+      let parts = [];
+      parts.push('<svg viewBox="0 0 400 480" xmlns="http://www.w3.org/2000/svg" font-family="inherit">');
+      mm.branches.forEach(function (br, i) {
+        const cy = branchYs[i];
+        parts.push('<path d="M 122 ' + cyCenter + ' C 148 ' + cyCenter + ', 144 ' + cy + ', 166 ' + cy + '" fill="none" stroke="' + mm.color + '" stroke-width="2" stroke-opacity="0.55"/>');
+        parts.push('<rect x="166" y="' + (cy - 52) + '" width="228" height="104" rx="10" fill="' + mm.color + '" fill-opacity="' + (i % 2 ? 0.13 : 0.07) + '" stroke="' + mm.color + '" stroke-opacity="0.5"/>');
+        parts.push('<circle cx="166" cy="' + cy + '" r="4" fill="' + mm.color + '"/>');
+        parts.push('<text x="180" y="' + (cy - 30) + '" font-size="12.5" font-weight="700" fill="' + mm.color + '">' + escXml(br[0]) + '</text>');
+        br[1].forEach(function (item, j) {
+          parts.push('<text x="180" y="' + (cy - 6 + j * 17) + '" font-size="11" fill="#44403c">\u2022 ' + escXml(item) + '</text>');
+        });
+      });
+      parts.push('<rect x="6" y="200" width="116" height="84" rx="12" fill="' + mm.color + '"/>');
+      parts.push('<text x="64" y="226" text-anchor="middle" font-size="10.5" letter-spacing="1.5" fill="#ffffff" fill-opacity="0.85">BUOC ' + step + ' / 9</text>');
+      parts.push('<text x="64" y="248" text-anchor="middle" font-size="13.5" font-weight="800" fill="#ffffff">' + escXml(mm.label[0]) + '</text>');
+      parts.push('<text x="64" y="267" text-anchor="middle" font-size="13.5" font-weight="800" fill="#ffffff">' + escXml(mm.label[1]) + '</text>');
+      parts.push('</svg>');
+      box.innerHTML = parts.join("");
+    }
+
     let currentStep = 1;
     let cachedFiles = [];
 
@@ -1166,7 +1263,7 @@
 
       document.getElementById("artworkTitle").textContent = STEP_TITLES[step];
       document.getElementById("stepCounterBadge").textContent = `Bước ${step} / 9`;
-      const _ill = document.getElementById("stepIllustration"); _ill.style.display = ""; _ill.src = `/images/${STEP_IMAGES[step]}`;
+      renderMindmap(step);
 
       if (step === 2) loadStep2Files();
       if (step === 9) runStep9Diagnostics();
@@ -1711,6 +1808,7 @@
     }
 
     window.addEventListener("DOMContentLoaded", () => {
+      renderMindmap(1);
       loadSystemState();
       runStep9Diagnostics();
     });
