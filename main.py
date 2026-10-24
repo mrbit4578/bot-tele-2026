@@ -83,27 +83,6 @@ def _protect_api():
     return None
 
 
-@app.before_request
-def _probe_environ():
-    # CHAN DOAN TAM THOI: ?__probe=1 -> in cac bien environ lien quan duong dan
-    if request.args.get("__probe") == "1":
-        keys = [k for k in request.environ.keys() if any(t in k for t in ("PATH", "URI", "URL", "VERCEL", "MATCHED", "SCRIPT", "QUERY"))]
-        info = {k: request.environ.get(k) for k in sorted(keys)}
-        http_x = {k: v for k, v in request.environ.items() if k.startswith("HTTP_X_")}
-        return jsonify({"ok": True, "environ": info, "http_x": http_x, "args": request.args.to_dict()})
-    return None
-
-
-@app.route("/__debug")
-def debug_environ():
-    """Chan doan tam thoi: xem Vercel truyen duong dan/headers gi vao Flask."""
-    keys = ["PATH_INFO", "SCRIPT_NAME", "REQUEST_URI", "QUERY_STRING", "HTTP_X_VERCEL_REWRITE_URL", "HTTP_X_MATCHED_PATH", "HTTP_X_ORIGINAL_URL", "HTTP_X_FORWARDED_URI"]
-    info = {k: request.environ.get(k) for k in keys}
-    info["url_rule"] = str(request.url_rule) if request.url_rule else None
-    info["path"] = request.path
-    info["full_path"] = request.full_path
-    return jsonify({"ok": True, "debug": info})
-
 db = DatabaseManager()
 faq_engine = FAQEngine(db)
 
@@ -1235,6 +1214,28 @@ def _init_boot_logs():
 
 
 _init_boot_logs()
+
+
+# --- WSGI middleware cho Vercel -------------------------------------------------
+# vercel.json rewrite moi request ve /api/index/<duong-dan-goc> va Vercel dat
+# PATH_INFO = /api/index/<duong-dan-goc>. Flask khop route theo PATH_INFO nen
+# phai cat tien to "/api/index" (chuyen sang SCRIPT_NAME) truoc khi Flask xu ly.
+# Khi chay local, PATH_INFO khong co tien to nay nen middleware khong lam gi.
+class _StripApiIndexPrefix:
+    PREFIX = "/api/index"
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.PREFIX or path.startswith(self.PREFIX + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.PREFIX
+            environ["PATH_INFO"] = path[len(self.PREFIX):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _StripApiIndexPrefix(app.wsgi_app)
 
 
 if __name__ == "__main__":
