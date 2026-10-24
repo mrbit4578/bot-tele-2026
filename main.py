@@ -812,7 +812,8 @@ def _enrich_username(user_id: str) -> None:
             uname = r.get("username", "")
             fname = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
             if uname:
-                users_mod.track_user(user_id, fname, uname, "")
+                users_mod.track_user(user_id, fname, uname, "",
+                                     count_interaction=False)
     except Exception:
         pass
 

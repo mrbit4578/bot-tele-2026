@@ -100,17 +100,22 @@ def _supa_user(chat_id: str):
 
 
 def track_user(chat_id: str, name: str = "", username: str = "",
-               lang: str = "") -> None:
-    """Ghi nhận / cập nhật 1 người dùng bot (mỗi lần họ nhắn hoặc bấm nút)."""
+               lang: str = "", count_interaction: bool = True) -> None:
+    """Ghi nhận / cập nhật 1 người dùng bot (mỗi lần họ nhắn hoặc bấm nút).
+    count_interaction=False: chỉ bổ sung thông tin (vd username qua getChat),
+    KHÔNG tính thêm lượt tương tác, KHÔNG đổi last_seen."""
     chat_id = str(chat_id)
     if not chat_id or chat_id == "guest":
         return
     users = _load(USERS_FILE)
     rec = users.get(chat_id, {})
     now = _now_iso()
-    rec.setdefault("first_seen", now)
-    rec["last_seen"] = now
-    rec["interactions"] = int(rec.get("interactions", 0)) + 1
+    if count_interaction:
+        rec.setdefault("first_seen", now)
+        rec["last_seen"] = now
+        rec["interactions"] = int(rec.get("interactions", 0)) + 1
+    else:
+        rec.setdefault("first_seen", now)
     if name:
         rec["name"] = name[:100]
     if username:
@@ -129,9 +134,9 @@ def track_user(chat_id: str, name: str = "", username: str = "",
                 "name": rec.get("name", old.get("name", "")),
                 "username": rec.get("username", old.get("username", "")),
                 "lang": rec.get("lang", old.get("lang", "")),
-                "first_seen": old.get("first_seen") or rec["first_seen"],
-                "last_seen": now,
-                "interactions": int(old.get("interactions", 0)) + 1,
+                "first_seen": old.get("first_seen") or rec.get("first_seen", now),
+                "last_seen": now if count_interaction else old.get("last_seen", now),
+                "interactions": int(old.get("interactions", 0)) + (1 if count_interaction else 0),
             }]
             db._supabase_request("bot_users", "POST", payload=payload,
                                  prefer="resolution=merge-duplicates")
