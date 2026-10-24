@@ -83,6 +83,17 @@ def _protect_api():
     return None
 
 
+@app.before_request
+def _probe_environ():
+    # CHAN DOAN TAM THOI: ?__probe=1 -> in cac bien environ lien quan duong dan
+    if request.args.get("__probe") == "1":
+        keys = [k for k in request.environ.keys() if any(t in k for t in ("PATH", "URI", "URL", "VERCEL", "MATCHED", "SCRIPT", "QUERY"))]
+        info = {k: request.environ.get(k) for k in sorted(keys)}
+        http_x = {k: v for k, v in request.environ.items() if k.startswith("HTTP_X_")}
+        return jsonify({"ok": True, "environ": info, "http_x": http_x, "args": request.args.to_dict()})
+    return None
+
+
 @app.route("/__debug")
 def debug_environ():
     """Chan doan tam thoi: xem Vercel truyen duong dan/headers gi vao Flask."""
