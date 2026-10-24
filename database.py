@@ -182,9 +182,10 @@ DEFAULT_DATABASE: Dict[str, Any] = {
         }
     ],
     "settings": {
-        "shop_name": "Shop AI Automation",
-        "shop_url": "https://shop.example.com",
-        "support_username": "@phucanhmrt",
+        "shop_name": "NexusPilot Pro",
+        "shop_url": "https://mt5-mrbit-2026-v2.onrender.com/",
+        "fanpage_url": "https://www.facebook.com/profile.php?id=61595736091847",
+        "support_username": "@soledadhuong90",
         "shipping_inner_city": "20.000đ",
         "shipping_province": "30.000đ",
         "payment": {

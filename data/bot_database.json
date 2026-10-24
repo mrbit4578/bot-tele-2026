@@ -258,13 +258,37 @@
         "система"
       ],
       "answer": "NexusPilot Pro — это торговая панель и сигнальный движок для MT5. Система сканирует XAUUSD, EURUSD, GBPUSD, USDJPY и BTCUSD тремя движками, оценивает каждый сигнал и отправляет только сигналы с оценкой от 80/100. Сигналы носят справочный характер и не являются финансовой рекомендацией."
+    },
+    {
+      "id": "faq_nx_zh_1",
+      "lang": "ZH",
+      "question": "NexusPilot Pro 是什么？",
+      "keywords": [
+        "nexuspilot",
+        "是什么",
+        "系统",
+        "介绍"
+      ],
+      "answer": "NexusPilot Pro 是 MT5 交易驾驶舱与信号引擎。它扫描 XAUUSD、EURUSD、GBPUSD、USDJPY 和 BTCUSD，使用 3 个信号引擎透明评分，只自动推送评分 80/100 及以上的信号。信号仅供参考，不构成投资建议。"
+    },
+    {
+      "id": "faq_nx_zh_2",
+      "lang": "ZH",
+      "question": "机器人如何发送交易信号？",
+      "keywords": [
+        "信号",
+        "怎么发",
+        "自动",
+        "提醒"
+      ],
+      "answer": "当驾驶舱检测到评分 80/100 及以上的信号时，本机器人会自动在此发送，包含入场价、止损、TP1/TP2/TP3、评分和检测引擎。输入 /tin_hieu 查看最近一次达标信号。"
     }
   ],
   "customers": [],
   "settings": {
     "shop_name": "NexusPilot Pro",
     "shop_url": "https://mt5-mrbit-2026-v2.onrender.com/",
-    "support_username": "@phucanhmrt",
+    "support_username": "@soledadhuong90",
     "shipping_inner_city": "20.000đ",
     "shipping_province": "30.000đ",
     "payment": {
@@ -308,6 +332,7 @@
         "file báo cáo",
         "report.pdf"
       ]
-    }
+    },
+    "fanpage_url": "https://www.facebook.com/profile.php?id=61595736091847"
   }
 }

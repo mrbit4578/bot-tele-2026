@@ -59,6 +59,9 @@ class FAQEngine:
         # Kiểm tra ký tự Cyrillic (Tiếng Nga - RU)
         if any("\u0400" <= ch <= "\u04FF" for ch in text):
             return "RU"
+        # Kiểm tra ký tự CJK (Tiếng Trung - ZH)
+        if any("\u4E00" <= ch <= "\u9FFF" or "\u3400" <= ch <= "\u4DBF" for ch in text):
+            return "ZH"
         # Kiểm tra từ khóa tiếng Anh phổ biến
         en_words = ["hello", "hi ", "price", "shipping", "payment", "product", "support", "buy", "how much"]
         vi_chars = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
@@ -255,7 +258,8 @@ class FAQEngine:
         titles = {
             "VI": "🇻🇳 **CÂU HỎI THƯỜNG GẶP (TIẾNG VIỆT)**\n",
             "EN": "🇬🇧 **FREQUENTLY ASKED QUESTIONS (ENGLISH)**\n",
-            "RU": "🇷🇺 **ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ (РУССКИЙ)**\n"
+            "RU": "🇷🇺 **ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ (РУССКИЙ)**\n",
+            "ZH": "🇨🇳 **常见问题 (中文）**\n"
         }
         header = titles.get(lang, titles["VI"])
         lines = [header]
@@ -361,6 +365,11 @@ class FAQEngine:
         elif lang == "RU":
             return {
                 "text": "Здравствуйте! Чем я могу вам помочь? Выберите нужный раздел ниже:",
+                "menu_type": "main_consultant"
+            }
+        elif lang == "ZH":
+            return {
+                "text": "您好！需要什么帮助？请在下方选择一个选项：",
                 "menu_type": "main_consultant"
             }
 

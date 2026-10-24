@@ -249,7 +249,8 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
                 [{"text": "📰 Tin kinh tế", "callback_data": "menu_news"}],
                 [{"text": "🖥 Mở Cockpit NexusPilot", "url": signal_relay.COCKPIT_URL}],
                 [{"text": "📋 FAQ NexusPilot", "callback_data": "menu_faq"},
-                 {"text": "👤 Hỗ trợ", "callback_data": "menu_human_support"}]
+                 {"text": "👤 Hỗ trợ", "callback_data": "menu_human_support"}],
+                [{"text": "📘 Fanpage MrBit Onchain", "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
@@ -272,7 +273,8 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
                 [{"text": "🛡 Quản trị rủi ro >", "callback_data": "menu_risk"}],
                 [{"text": "📈 Các cặp đang theo dõi >", "callback_data": "menu_products"}],
                 [{"text": "🌐 FAQ đa ngôn ngữ (VI/EN/RU) >", "callback_data": "menu_faq_lang"}],
-                [{"text": "👤 Gặp tư vấn viên >", "callback_data": "menu_human_support"}]
+                [{"text": "👤 Gặp tư vấn viên >", "callback_data": "menu_human_support"}],
+                [{"text": "📘 Fanpage MrBit Onchain", "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
@@ -321,6 +323,7 @@ def build_inline_keyboard(menu_type: Optional[str]) -> Optional[Dict[str, Any]]:
                 [{"text": "🇻🇳 VI — Hỗ trợ tiếng Việt >", "callback_data": "faq_lang_VI"}],
                 [{"text": "🇬🇧 EN — English support >", "callback_data": "faq_lang_EN"}],
                 [{"text": "🇷🇺 RU — Поддержка на русском >", "callback_data": "faq_lang_RU"}],
+                [{"text": "🇨🇳 ZH — 中文支持 >", "callback_data": "faq_lang_ZH"}],
                 [{"text": "⬅️ Quay lại", "callback_data": "menu_consultant"}]
             ]
         }
@@ -476,6 +479,7 @@ def generate_bot_reply(
                     f"👤 **KẾT NỐI TƯ VẤN VIÊN TRỰC TIẾP**\n\n"
                     f"• Tư vấn viên hỗ trợ: {support_user}\n"
                     f"• Website chính thức: {shop_url}\n"
+                    f"• Fanpage: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}\n"
                     f"• Bạn hãy để lại Số điện thoại hoặc nội dung cần hỗ trợ, tư vấn viên sẽ phản hồi trong ít phút!"
                 ),
                 "reply_markup": build_inline_keyboard("main_consultant")
@@ -644,7 +648,9 @@ def generate_bot_reply(
     if cmd == "/support":
         return {
             "responded": True,
-            "text": f"👤 Liên hệ tư vấn viên trực tiếp: {support_user}\nHoặc truy cập: {shop_url}",
+            "text": (f"👤 Liên hệ tư vấn viên trực tiếp: {support_user}\n"
+                    f"Hoặc truy cập: {shop_url}\n"
+                    f"Fanpage: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}"),
             "reply_markup": build_inline_keyboard("main_consultant")
         }
 
@@ -1199,7 +1205,7 @@ def api_step7_config():
         save_env_config({"GEMINI_API_KEY": data["GEMINI_API_KEY"]})
 
     settings_update = {}
-    for k in ["shop_name", "shop_url", "support_username", "shipping_inner_city", "shipping_province", "payment"]:
+    for k in ["shop_name", "shop_url", "support_username", "fanpage_url", "shipping_inner_city", "shipping_province", "payment"]:
         if k in data:
             settings_update[k] = data[k]
 
