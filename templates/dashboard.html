@@ -1160,8 +1160,8 @@
         </div>
         <p style="font-size:13px;opacity:.8">Lưu ý: người dùng bấm “🗑 Xóa nhật ký” chỉ xóa tin nhắn của bot phía họ; dữ liệu vận hành trên máy chủ (bảng này, lịch sử tín hiệu) vẫn được giữ.</p>
         <table class="table-clean" id="tableUsers">
-          <thead><tr><th>Tên</th><th>ID</th><th>Username</th><th>Ngôn ngữ</th><th>Lần đầu</th><th>Lần cuối</th><th>Tương tác</th></tr></thead>
-          <tbody><tr><td colspan="7">Chưa tải — bấm “Tải lại” (sẽ hỏi ADMIN_KEY nếu chưa đăng nhập).</td></tr></tbody>
+          <thead><tr><th>Tên</th><th>ID</th><th>Username</th><th>Ngôn ngữ</th><th>Lần đầu</th><th>Lần cuối</th><th>Tương tác</th><th>Tin bot đã gửi</th></tr></thead>
+          <tbody><tr><td colspan="8">Chưa tải — bấm “Tải lại” (sẽ hỏi ADMIN_KEY nếu chưa đăng nhập).</td></tr></tbody>
         </table>
       </section>
 
@@ -1312,12 +1312,12 @@
       try {
         const r = await fetch("/api/users");
         const data = await r.json();
-        if (!data.ok) { tbody.innerHTML = '<tr><td colspan="7">Không tải được (cần ADMIN_KEY).</td></tr>'; return; }
+        if (!data.ok) { tbody.innerHTML = '<tr><td colspan="8">Không tải được (cần ADMIN_KEY).</td></tr>'; return; }
         const rows = (data.users || []).map(u => {
           const esc = v => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-          return `<tr><td>${esc(u.name)}</td><td>${esc(u.chat_id)}</td><td>${esc(u.username) ? "@" + esc(u.username) : ""}</td><td>${esc(u.lang)}</td><td>${esc(u.first_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.last_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.interactions)}</td></tr>`;
+          return `<tr><td>${esc(u.name)}</td><td>${esc(u.chat_id)}</td><td>${esc(u.username) ? "@" + esc(u.username) : ""}</td><td>${esc(u.lang)}</td><td>${esc(u.first_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.last_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.interactions)}</td><td>${esc(u.tracked_bot_messages)}</td></tr>`;
         }).join("");
-        tbody.innerHTML = rows || '<tr><td colspan="7">Chưa có người dùng nào tương tác với bot.</td></tr>';
+        tbody.innerHTML = rows || '<tr><td colspan="8">Chưa có người dùng nào tương tác với bot.</td></tr>';
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="7">Lỗi tải danh sách.</td></tr>';
       }
