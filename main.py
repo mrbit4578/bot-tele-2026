@@ -25,6 +25,7 @@ import signal_relay
 import news_feed
 import i18n
 import chart as chart_mod
+import users as users_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
@@ -205,7 +206,16 @@ def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: O
             resp = requests.post(url, data=data, files=files, timeout=30)
         else:
             resp = requests.post(url, json=payload or {}, timeout=10)
-        return resp.json()
+        result = resp.json()
+        if method.startswith("send") and isinstance(result, dict) and result.get("ok"):
+            _msg = result.get("result") or {}
+            _cid = (payload or {}).get("chat_id")
+            if _cid and _msg.get("message_id"):
+                try:
+                    users_mod.track_bot_message(str(_cid), int(_msg["message_id"]))
+                except Exception:
+                    pass
+        return result
     except Exception as e:
         logger.error(f"Telegram API error ({method}): {e}")
         return {"ok": False, "description": str(e)}
@@ -251,6 +261,7 @@ def build_reply_keyboard(lang: str = "VI") -> Dict[str, Any]:
             [{"text": _reply_label(lang, "btn_news")}, {"text": _reply_label(lang, "btn_lang_short")}],
             [{"text": _reply_label(lang, "btn_faq")}, {"text": _reply_label(lang, "btn_support_short")}],
             [{"text": _reply_label(lang, "btn_cockpit")}],
+            [{"text": _reply_label(lang, "btn_delete")}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False,
@@ -271,6 +282,7 @@ def label_to_callback(text: str) -> Optional[str]:
         "btn_support_short": "menu_human_support",
         "btn_support": "menu_human_support",
         "btn_cockpit": "cockpit_text",
+        "btn_delete": "delete_history",
     }
     for lang in i18n.SUPPORTED:
         for key, cb in mapping.items():
@@ -408,6 +420,36 @@ def generate_bot_reply(
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
+        if callback_data == "delete_history":
+            if chat_type != "private":
+                return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
+            return {"responded": True, "text": i18n.t(user_lang, "delete_confirm"),
+                    "reply_markup": {"inline_keyboard": [
+                        [{"text": i18n.t(user_lang, "delete_yes"), "callback_data": "delete_history_confirm"}],
+                        [{"text": i18n.t(user_lang, "delete_no"), "callback_data": "delete_history_cancel"}],
+                    ]}}
+        if callback_data == "delete_history_cancel":
+            return {"responded": True, "text": i18n.t(user_lang, "delete_kept"),
+                    "reply_markup": build_reply_keyboard(user_lang)}
+        if callback_data == "delete_history_confirm":
+            if chat_type != "private":
+                return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
+            ids = users_mod.get_bot_message_ids(str(user_id))
+            ok_n = fail_n = 0
+            for mid in reversed(ids):
+                res = telegram_api("deleteMessage", {"chat_id": user_id, "message_id": mid})
+                if res.get("ok"):
+                    ok_n += 1
+                else:
+                    fail_n += 1
+            users_mod.clear_bot_messages(str(user_id))
+            if ok_n and not fail_n:
+                text = i18n.t(user_lang, "delete_done").format(n=ok_n)
+            elif ok_n:
+                text = i18n.t(user_lang, "delete_done_partial").format(n=ok_n, m=fail_n)
+            else:
+                text = i18n.t(user_lang, "delete_done_none")
+            return {"responded": True, "text": text, "reply_markup": build_reply_keyboard(user_lang)}
         if callback_data == "menu_news":
             return {
                 "responded": True,
@@ -764,6 +806,10 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
             chat_type = chat.get("type", "private")
             from_user = cb.get("from", {})
 
+            users_mod.track_user(str(from_user.get("id", chat_id)),
+                                 f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
+                                 from_user.get("username", ""),
+                                 db.get_user_lang(str(from_user.get("id", chat_id))) or "")
             telegram_api("answerCallbackQuery", {"callback_query_id": cb_id})
 
             reply = generate_bot_reply(
@@ -829,6 +875,9 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
             return {"ok": True, "handled": "non_text_message"}
 
         full_name = f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip()
+        users_mod.track_user(str(from_user.get("id", chat_id)), full_name,
+                             from_user.get("username", ""),
+                             db.get_user_lang(str(from_user.get("id", chat_id))) or "")
         logger.info(f"Incoming [{chat_type}] from {full_name} ({chat_id}): {text}")
 
         reply = generate_bot_reply(
@@ -1436,6 +1485,12 @@ def api_signal_relay():
 def api_signals():
     """Danh sach tin hieu gan day (chi doc, da qua khoa ADMIN_KEY)."""
     return jsonify({"ok": True, "signals": signal_relay.recent_signals(limit=20)})
+
+
+@app.route("/api/users", methods=["GET"])
+def api_users():
+    """Danh sach nguoi dung bot cho bang quan tri (chi doc; khoa ADMIN_KEY o before_request)."""
+    return jsonify({"ok": True, "users": users_mod.list_users()})
 
 
 @app.route("/api/step9/simulate", methods=["POST"])

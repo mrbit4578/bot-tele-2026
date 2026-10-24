@@ -710,6 +710,10 @@
       <span class="step-num">09</span>
       <span class="step-label">Kiểm Tra Bot<br>& Sửa Lỗi</span>
     </button>
+    <button class="step-tab" onclick="switchStep(10)" data-step="10">
+      <span class="step-num">👥</span>
+      <span class="step-label">Người Dùng<br>& Kiểm Soát</span>
+    </button>
   </nav>
 
   <!-- MAIN CONTENT -->
@@ -1142,6 +1146,25 @@
           </div>
         </div>
       </section>
+      <section class="step-panel" id="panel-step-10">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">QUẢN TRỊ</span>
+            <h2>NGƯỜI DÙNG BOT & KIỂM SOÁT</h2>
+            <p>Danh sách người dùng đã nhắn hoặc bấm nút trên bot (tên, ID, username, ngôn ngữ, lần tương tác). Chỉ chủ bot có ADMIN_KEY mới xem được.</p>
+          </div>
+          <div>
+            <button class="btn btn-red" onclick="loginAdmin()">🔑 Đăng nhập quản trị</button>
+            <button class="btn" onclick="loadUsers()">↻ Tải lại</button>
+          </div>
+        </div>
+        <p style="font-size:13px;opacity:.8">Lưu ý: người dùng bấm “🗑 Xóa nhật ký” chỉ xóa tin nhắn của bot phía họ; dữ liệu vận hành trên máy chủ (bảng này, lịch sử tín hiệu) vẫn được giữ.</p>
+        <table class="table-clean" id="tableUsers">
+          <thead><tr><th>Tên</th><th>ID</th><th>Username</th><th>Ngôn ngữ</th><th>Lần đầu</th><th>Lần cuối</th><th>Tương tác</th></tr></thead>
+          <tbody><tr><td colspan="7">Chưa tải — bấm “Tải lại” (sẽ hỏi ADMIN_KEY nếu chưa đăng nhập).</td></tr></tbody>
+        </table>
+      </section>
+
 
     </main>
   </div>
@@ -1156,7 +1179,8 @@
       6: "BƯỚC 6: KẾT NỐI TELEGRAM WEBHOOK",
       7: "BƯỚC 7: THIẾT LẬP BOT TƯ VẤN AI",
       8: "BƯỚC 8: TÍCH HỢP BOT VÀO NHÓM",
-      9: "BƯỚC 9: KIỂM TRA BOT & SỬA LỖI"
+      9: "BƯỚC 9: KIỂM TRA BOT & SỬA LỖI",
+      10: "QUẢN TRỊ: NGƯỜI DÙNG BOT & KIỂM SOÁT"
     };
 
     // SƠ ĐỒ TƯ DUY TỪNG BƯỚC: nút trung tâm + 4 nhánh chính (mỗi nhánh 3 ý nhỏ)
@@ -1261,12 +1285,13 @@
       const target = document.getElementById(`panel-step-${step}`);
       if (target) target.classList.add("active");
 
-      document.getElementById("artworkTitle").textContent = STEP_TITLES[step];
-      document.getElementById("stepCounterBadge").textContent = `Bước ${step} / 9`;
-      renderMindmap(step);
+      document.getElementById("artworkTitle").textContent = STEP_TITLES[step] || "";
+      document.getElementById("stepCounterBadge").textContent = step === 10 ? "Quản trị" : `Bước ${step} / 9`;
+      if (step <= 9) renderMindmap(step);
 
       if (step === 2) loadStep2Files();
       if (step === 9) runStep9Diagnostics();
+      if (step === 10) loadUsers();
     }
 
     function prevStep() {
@@ -1275,6 +1300,27 @@
 
     function nextStep() {
       if (currentStep < 9) switchStep(currentStep + 1);
+    }
+
+    function loginAdmin() {
+      const k = window.prompt("Nhập ADMIN_KEY để xem danh sách người dùng:");
+      if (k) { sessionStorage.setItem("ADMIN_KEY", k); loadUsers(); }
+    }
+
+    async function loadUsers() {
+      const tbody = document.querySelector("#tableUsers tbody");
+      try {
+        const r = await fetch("/api/users");
+        const data = await r.json();
+        if (!data.ok) { tbody.innerHTML = '<tr><td colspan="7">Không tải được (cần ADMIN_KEY).</td></tr>'; return; }
+        const rows = (data.users || []).map(u => {
+          const esc = v => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+          return `<tr><td>${esc(u.name)}</td><td>${esc(u.chat_id)}</td><td>${esc(u.username) ? "@" + esc(u.username) : ""}</td><td>${esc(u.lang)}</td><td>${esc(u.first_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.last_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.interactions)}</td></tr>`;
+        }).join("");
+        tbody.innerHTML = rows || '<tr><td colspan="7">Chưa có người dùng nào tương tác với bot.</td></tr>';
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="7">Lỗi tải danh sách.</td></tr>';
+      }
     }
 
     async function loadSystemState() {
