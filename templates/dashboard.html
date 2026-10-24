@@ -1156,11 +1156,12 @@
           <div>
             <button class="btn btn-red" onclick="loginAdmin()">🔑 Đăng nhập quản trị</button>
             <button class="btn" onclick="loadUsers()">↻ Tải lại</button>
+            <button class="btn" onclick="enrichUsers()">👤 Cập nhật username</button>
           </div>
         </div>
         <p style="font-size:13px;opacity:.8">Lưu ý: người dùng bấm “🗑 Xóa nhật ký” chỉ xóa tin nhắn của bot phía họ; dữ liệu vận hành trên máy chủ (bảng này, lịch sử tín hiệu) vẫn được giữ.</p>
         <table class="table-clean" id="tableUsers">
-          <thead><tr><th>Tên</th><th>ID</th><th>Username</th><th>Ngôn ngữ</th><th>Lần đầu</th><th>Lần cuối</th><th>Tương tác</th><th>Tin bot đã gửi</th></tr></thead>
+          <thead><tr><th>Tên</th><th>ID</th><th>Username</th><th>Ngôn ngữ</th><th>Lần đầu (giờ VN)</th><th>Lần cuối (giờ VN)</th><th>Tương tác</th><th>Tin bot đã gửi</th></tr></thead>
           <tbody><tr><td colspan="8">Chưa tải — bấm “Tải lại” (sẽ hỏi ADMIN_KEY nếu chưa đăng nhập).</td></tr></tbody>
         </table>
       </section>
@@ -1307,6 +1308,21 @@
       if (k) { sessionStorage.setItem("ADMIN_KEY", k); loadUsers(); }
     }
 
+    function fmtVN(v) {
+      if (!v) return "";
+      const d = new Date(v);
+      if (isNaN(d.getTime())) return String(v).slice(0, 16);
+      return d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+
+    async function enrichUsers() {
+      try {
+        const r = await fetch("/api/users/enrich", { method: "POST" });
+        const data = await r.json();
+        if (data.ok) loadUsers();
+      } catch (e) { /* giữ bảng cũ */ }
+    }
+
     async function loadUsers() {
       const tbody = document.querySelector("#tableUsers tbody");
       try {
@@ -1315,7 +1331,7 @@
         if (!data.ok) { tbody.innerHTML = '<tr><td colspan="8">Không tải được (cần ADMIN_KEY).</td></tr>'; return; }
         const rows = (data.users || []).map(u => {
           const esc = v => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-          return `<tr><td>${esc(u.name)}</td><td>${esc(u.chat_id)}</td><td>${esc(u.username) ? "@" + esc(u.username) : ""}</td><td>${esc(u.lang)}</td><td>${esc(u.first_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.last_seen || "").slice(0, 16).replace("T", " ")}</td><td>${esc(u.interactions)}</td><td>${esc(u.tracked_bot_messages)}</td></tr>`;
+          return `<tr><td>${esc(u.name)}</td><td>${esc(u.chat_id)}</td><td>${esc(u.username) ? "@" + esc(u.username) : ""}</td><td>${esc(u.lang)}</td><td>${fmtVN(u.first_seen)}</td><td>${fmtVN(u.last_seen)}</td><td>${esc(u.interactions)}</td><td>${esc(u.tracked_bot_messages)}</td></tr>`;
         }).join("");
         tbody.innerHTML = rows || '<tr><td colspan="8">Chưa có người dùng nào tương tác với bot.</td></tr>';
       } catch (e) {

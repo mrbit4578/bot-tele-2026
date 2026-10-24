@@ -12,7 +12,7 @@ import time
 import subprocess
 import threading
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
 import requests
@@ -790,6 +790,33 @@ def generate_bot_reply(
     }
 
 
+def _enrich_username(user_id: str) -> None:
+    """Nếu user chưa có username trên bản ghi, hỏi Telegram getChat để lấy.
+    Chỉ thử lại sau 24h (chống gọi API lặp cho acc vốn không đặt username)."""
+    try:
+        if (users_mod.get_user(user_id) or {}).get("username"):
+            return
+        local = users_mod.get_local_user(user_id)
+        try:
+            last = datetime.fromisoformat(local.get("_username_checked_at", ""))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last < timedelta(hours=24):
+                return
+        except (ValueError, TypeError):
+            pass
+        users_mod.mark_username_checked(user_id)
+        res = telegram_api("getChat", {"chat_id": user_id})
+        if res.get("ok"):
+            r = res.get("result") or {}
+            uname = r.get("username", "")
+            fname = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+            if uname:
+                users_mod.track_user(user_id, fname, uname, "")
+    except Exception:
+        pass
+
+
 def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
     """
     BƯỚC 6: Nhận dữ liệu từ Telegram Webhook (hoặc Polling), xử lý và gửi phản hồi.
@@ -810,6 +837,7 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                                  f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
                                  from_user.get("username", ""),
                                  db.get_user_lang(str(from_user.get("id", chat_id))) or "")
+            _enrich_username(str(from_user.get("id", chat_id)))
             telegram_api("answerCallbackQuery", {"callback_query_id": cb_id})
 
             reply = generate_bot_reply(
@@ -878,6 +906,7 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
         users_mod.track_user(str(from_user.get("id", chat_id)), full_name,
                              from_user.get("username", ""),
                              db.get_user_lang(str(from_user.get("id", chat_id))) or "")
+        _enrich_username(str(from_user.get("id", chat_id)))
         logger.info(f"Incoming [{chat_type}] from {full_name} ({chat_id}): {text}")
 
         reply = generate_bot_reply(
@@ -1491,6 +1520,19 @@ def api_signals():
 def api_users():
     """Danh sach nguoi dung bot cho bang quan tri (chi doc; khoa ADMIN_KEY o before_request)."""
     return jsonify({"ok": True, "users": users_mod.list_users()})
+
+
+@app.route("/api/users/enrich", methods=["POST"])
+def api_users_enrich():
+    """Bổ sung username còn thiếu cho các user đã ghi (qua Telegram getChat)."""
+    enriched, still_missing = [], []
+    for u in users_mod.list_users():
+        if u.get("username"):
+            continue
+        _enrich_username(u["chat_id"])
+        after = users_mod.get_user(u["chat_id"]) or {}
+        (enriched if after.get("username") else still_missing).append(u["chat_id"])
+    return jsonify({"ok": True, "enriched": enriched, "still_missing": still_missing})
 
 
 @app.route("/api/step9/simulate", methods=["POST"])
