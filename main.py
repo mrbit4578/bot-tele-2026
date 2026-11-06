@@ -298,22 +298,92 @@ RISK_TEXT = (
     "⚠️ Mọi tín hiệu chỉ là tham khảo — không phải lời khuyên đầu tư."
 )
 
+# --- Nội dung riêng cho bot coin Trade.2026 (kind="coin") ---
+# Nguồn sự thật: dự án Trade.2026 — engine phanTichCoin() đa khung 4H→1H→15m,
+# máy 5 bước Chờ → Quét TK → CHoCH → Retest → Vào lệnh; điểm hợp lưu /100;
+# chỉ báo khi điểm ≥70 VÀ phase alert_ready/retest_in_progress.
+COIN_ENGINES_TEXT = (
+    "🧠 **ENGINE COIN TRADE.2026 — MÁY 5 BƯỚC**\n\n"
+    "Trạm 24/7 quét 12 coin (BTC, ETH, SOL, BNB, DOGE, DYDX, WIF, OP, RUNE, INJ, SUI, XAUT) "
+    "trên 3 khung 4H → 1H → 15m, theo đúng 5 bước:\n\n"
+    "1️⃣ **Chờ** — Giá về vùng quan trọng trên khung lớn (POI: Order Block / FVG).\n"
+    "2️⃣ **Quét TK** — Chờ cú quét thanh khoản (stop hunt / spring) trên nến đã đóng.\n"
+    "3️⃣ **CHoCH** — Xuống khung nhỏ chờ CHoCH thật (toàn bộ thân nến vượt mức, có sweep trước, kèm IDM).\n"
+    "4️⃣ **Retest** — Vào lệnh tại retest POI / vùng Fibo OTE, chỉ xét nến đã đóng (chống repaint).\n"
+    "5️⃣ **Vào lệnh & quản lý** — Dời SL về hòa vốn khi lệnh lãi +1R.\n\n"
+    "**Chấm điểm hợp lưu /100:** xu hướng khung lớn 25 · POI 15 · quét thanh khoản 20 · "
+    "CHoCH 15 · retest 15 · tỉ lệ RR 10.\n\n"
+    "Chỉ tín hiệu **từ 70/100** VÀ đang ở giai đoạn `alert_ready` hoặc "
+    "`retest_in_progress` mới được phát. Dưới 70 chỉ là PREPARE — chưa đủ điều kiện vào lệnh."
+)
 
-def _reply_label(lang: str, key: str) -> str:
+COIN_RISK_TEXT = (
+    "🛡 **QUẢN TRỊ RỦI RO COIN TRADE.2026**\n\n"
+    "• Vào lệnh tại **mép vùng POI** sau khi retest giữ vùng (chỉ nến đã đóng).\n"
+    "• Stop Loss đặt **sau wick của cú sweep + 0.25 ATR** — không đặt SL sát giá.\n"
+    "• Chốt lời theo RR: **TP1 RR 1:2 · TP2 RR 1:3**.\n"
+    "• Chỉ phát tín hiệu **từ 70/100** và đúng giai đoạn báo — tín hiệu dưới ngưỡng hoặc sai giai đoạn thì đứng ngoài.\n"
+    "• Tín hiệu cũ hơn 10 phút thì bỏ qua, không FOMO đuổi lệnh.\n"
+    "• Không dùng đòn bẩy cao; mỗi lệnh chỉ rủi ro phần vốn bạn chấp nhận mất.\n\n"
+    "⚠️ Mọi tín hiệu chỉ là tham khảo — không phải lời khuyên đầu tư. "
+    "Mọi quyết định lệnh thật do BẠN xác nhận."
+)
+
+COIN_WATCHLIST_TEXT = (
+    "📈 **TOP COIN THEO DÕI — TRADE.2026**\n\n"
+    "Trạm 24/7 quét 12 coin:\n"
+    "• **Nhóm chính:** BTC, ETH, SOL, BNB, DOGE, DYDX\n"
+    "• **Nhóm theo dõi:** WIF, OP, RUNE, INJ, SUI, XAUT\n\n"
+    "Mỗi coin được chấm điểm hợp lưu /100 trên 3 khung 4H → 1H → 15m. "
+    "Chỉ coin nào đạt **từ 70/100** và đúng giai đoạn mới báo tín hiệu.\n\n"
+    "Gõ /tin_hieu để xem tín hiệu coin gần nhất."
+)
+
+
+def coin_faq_text() -> str:
+    """FAQ của bot coin Trade.2026 (tiếng Việt)."""
+    return (
+        "📋 **FAQ — BOT TÍN HIỆU COIN TRADE.2026**\n\n"
+        "❓ **Bot này báo tín hiệu gì?**\n"
+        "💡 Tín hiệu coin (Long/Short) từ trạm 24/7 Trade.2026: điểm hợp lưu, entry, SL, TP1, TP2. "
+        "Chỉ báo khi điểm **từ 70/100** và đúng giai đoạn `alert_ready` / `retest_in_progress`.\n\n"
+        "❓ **Điểm hợp lưu tính thế nào?**\n"
+        "💡 Chấm /100: xu hướng khung lớn 25 · POI 15 · quét thanh khoản 20 · CHoCH 15 · retest 15 · tỉ lệ RR 10.\n\n"
+        "❓ **Máy 5 bước là gì?**\n"
+        "💡 Chờ → Quét TK → CHoCH → Retest → Vào lệnh. Gõ /engines để xem chi tiết.\n\n"
+        "❓ **SL/TP tính ra sao?**\n"
+        "💡 Entry tại mép POI sau retest; SL sau wick sweep + 0.25 ATR; TP1 RR 1:2, TP2 RR 1:3. Gõ /risk để xem quy tắc.\n\n"
+        "❓ **Sao có lúc không có tín hiệu?**\n"
+        "💡 Chưa có coin nào đủ 70 điểm và đúng giai đoạn thì bot im — đứng ngoài cũng là một quyết định đúng.\n\n"
+        "❓ **Bot có phải lời khuyên đầu tư không?**\n"
+        "💡 Không. Mọi tín hiệu chỉ là tham khảo; quyết định lệnh thật do bạn xác nhận.\n\n"
+        "❓ **Xem web phân tích ở đâu?**\n"
+        f"💡 Mở Trade.2026: {signal_relay.trade2026_url()}"
+    )
+
+
+COIN_FALLBACK_TEXT = (
+    "Tôi là bot tín hiệu coin **Trade.2026** — trạm 24/7 quét 12 coin, chỉ báo tín hiệu từ 70/100.\n\n"
+    "Gõ /tin_hieu để xem tín hiệu coin gần nhất, /tin_moi để xem tin kinh tế, hoặc chọn mục bên dưới nhé."
+)
+
+
+def _reply_label(lang: str, key: str, kind: str = "forex") -> str:
     """Nhan nut ban phim co dinh (bo dau ' >' cua ban inline)."""
-    return i18n.t(lang, key).replace(" >", "")
+    return i18n.t(lang, key, kind).replace(" >", "")
 
 
-def build_reply_keyboard(lang: str = "VI") -> Dict[str, Any]:
-    """Ban phim tra loi co dinh kieu KIRO BOT: luoi 2 cot, luon hien duoi khung chat."""
+def build_reply_keyboard(lang: str = "VI", kind: str = "forex") -> Dict[str, Any]:
+    """Ban phim tra loi co dinh kieu KIRO BOT: luoi 2 cot, luon hien duoi khung chat.
+    kind="coin": nhan coin Trade.2026 (i18n STRINGS_COIN); mac dinh la nhan Forex."""
     return {
         "keyboard": [
-            [{"text": _reply_label(lang, "btn_signal")}, {"text": _reply_label(lang, "btn_engines")}],
-            [{"text": _reply_label(lang, "btn_risk")}, {"text": _reply_label(lang, "btn_products")}],
-            [{"text": _reply_label(lang, "btn_news")}, {"text": _reply_label(lang, "btn_lang_short")}],
-            [{"text": _reply_label(lang, "btn_faq")}, {"text": _reply_label(lang, "btn_support_short")}],
-            [{"text": _reply_label(lang, "btn_cockpit")}],
-            [{"text": _reply_label(lang, "btn_delete")}],
+            [{"text": _reply_label(lang, "btn_signal", kind)}, {"text": _reply_label(lang, "btn_engines", kind)}],
+            [{"text": _reply_label(lang, "btn_risk", kind)}, {"text": _reply_label(lang, "btn_products", kind)}],
+            [{"text": _reply_label(lang, "btn_news", kind)}, {"text": _reply_label(lang, "btn_lang_short", kind)}],
+            [{"text": _reply_label(lang, "btn_faq", kind)}, {"text": _reply_label(lang, "btn_support_short", kind)}],
+            [{"text": _reply_label(lang, "btn_cockpit", kind)}],
+            [{"text": _reply_label(lang, "btn_delete", kind)}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False,
@@ -321,8 +391,9 @@ def build_reply_keyboard(lang: str = "VI") -> Dict[str, Any]:
     }
 
 
-def label_to_callback(text: str) -> Optional[str]:
-    """Anh xa nhan nut ban phim co dinh (ca 4 ngon ngu) sang callback tuong ung."""
+def label_to_callback(text: str, kind: str = "forex") -> Optional[str]:
+    """Anh xa nhan nut ban phim co dinh (ca 4 ngon ngu) sang callback tuong ung.
+    Chi doi chieu nhan cua dung loai bot (kind) de tranh nham lan Forex <-> coin."""
     mapping = {
         "btn_signal": "menu_signal",
         "btn_engines": "menu_engines",
@@ -338,33 +409,35 @@ def label_to_callback(text: str) -> Optional[str]:
     }
     for lang in i18n.SUPPORTED:
         for key, cb in mapping.items():
-            if text == _reply_label(lang, key):
+            if text == _reply_label(lang, key, kind):
                 return cb
     return None
 
 
-def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optional[Dict[str, Any]]:
+def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI", kind: str = "forex") -> Optional[Dict[str, Any]]:
     """
     Tạo bàn phím Inline Keyboard chuẩn theo Bước 7 và Bước 9.
+    kind="coin": menu coin Trade.2026 (nhan + link Trade.2026, khong co Cockpit).
     """
     if not menu_type:
         return None
 
     settings = db.get_settings()
     shop_url = settings.get("shop_url", "https://shop.example.com")
+    site_url = signal_relay.trade2026_url() if kind == "coin" else signal_relay.COCKPIT_URL
 
     if menu_type == "start_menu":
-        # Menu chinh NexusPilot Pro
+        # Menu chinh: NexusPilot Pro (forex) / Trade.2026 (coin)
         return {
             "inline_keyboard": [
-                [{"text": i18n.t(lang, "btn_signal").replace(" >", ""), "callback_data": "menu_signal"}],
-                [{"text": i18n.t(lang, "btn_engines").replace(" >", ""), "callback_data": "menu_engines"}],
-                [{"text": i18n.t(lang, "btn_risk").replace(" >", ""), "callback_data": "menu_risk"}],
-                [{"text": i18n.t(lang, "btn_news"), "callback_data": "menu_news"}],
-                [{"text": i18n.t(lang, "btn_cockpit"), "url": signal_relay.COCKPIT_URL}],
-                [{"text": i18n.t(lang, "btn_faq"), "callback_data": "menu_faq"},
-                 {"text": i18n.t(lang, "btn_support_short"), "callback_data": "menu_human_support"}],
-                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+                [{"text": i18n.t(lang, "btn_signal", kind).replace(" >", ""), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines", kind).replace(" >", ""), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk", kind).replace(" >", ""), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_news", kind), "callback_data": "menu_news"}],
+                [{"text": i18n.t(lang, "btn_cockpit", kind), "url": site_url}],
+                [{"text": i18n.t(lang, "btn_faq", kind), "callback_data": "menu_faq"},
+                 {"text": i18n.t(lang, "btn_support_short", kind), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage", kind), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
@@ -379,16 +452,16 @@ def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optiona
         }
 
     if menu_type == "main_consultant":
-        # Menu dieu huong NexusPilot Pro
+        # Menu dieu huong: NexusPilot Pro (forex) / Trade.2026 (coin)
         return {
             "inline_keyboard": [
-                [{"text": i18n.t(lang, "btn_signal"), "callback_data": "menu_signal"}],
-                [{"text": i18n.t(lang, "btn_engines"), "callback_data": "menu_engines"}],
-                [{"text": i18n.t(lang, "btn_risk"), "callback_data": "menu_risk"}],
-                [{"text": i18n.t(lang, "btn_products"), "callback_data": "menu_products"}],
-                [{"text": i18n.t(lang, "btn_faq_lang"), "callback_data": "menu_faq_lang"}],
-                [{"text": i18n.t(lang, "btn_support"), "callback_data": "menu_human_support"}],
-                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+                [{"text": i18n.t(lang, "btn_signal", kind), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines", kind), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk", kind), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_products", kind), "callback_data": "menu_products"}],
+                [{"text": i18n.t(lang, "btn_faq_lang", kind), "callback_data": "menu_faq_lang"}],
+                [{"text": i18n.t(lang, "btn_support", kind), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage", kind), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
             ]
         }
 
@@ -445,6 +518,56 @@ def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optiona
     return None
 
 
+def _coin_natural_reply(clean_text: str, user_lang: str, kind: str) -> Dict[str, Any]:
+    """Trả lời câu hỏi tự nhiên cho bot coin Trade.2026 theo từ khóa.
+
+    KHÔNG dùng faq_engine.generate_ai_response ở đây: các nhánh từ khóa của
+    nó chứa nội dung Forex (ngưỡng 80/100, Cockpit, 3 engine MT5, bảng giá).
+    Không khớp từ khóa nào -> câu trả lời mặc định của bot coin."""
+    low = (clean_text or "").lower()
+    if any(k in low for k in ("tín hiệu", "tin hieu", "signal", "lệnh mới", "lenh moi", "có lệnh", "co lenh")):
+        return {
+            "responded": True,
+            "text": signal_relay.latest_coin_signal_text(),
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+        }
+    if any(k in low for k in ("tin tức", "tin tuc", "lịch kinh tế", "lich kinh te", "cpi", "nonfarm", "nfp", "tin sắp ra", "tin sap ra", "tin đã ra", "tin da ra")):
+        if "sắp ra" in low or "sap ra" in low:
+            feed = news_feed.format_upcoming()
+        elif "đã ra" in low or "da ra" in low:
+            feed = news_feed.format_past()
+        else:
+            feed = news_feed.format_latest()
+        return {
+            "responded": True,
+            "text": feed,
+            "reply_markup": build_inline_keyboard("news", user_lang, kind)
+        }
+    if any(k in low for k in ("engine", "smc", "ict", "choch", "5 bước", "5 buoc", "máy 5", "may 5")):
+        return {
+            "responded": True,
+            "text": COIN_ENGINES_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+        }
+    if any(k in low for k in ("rủi ro", "rui ro", "risk", "stop loss", "cắt lỗ", "cat lo", "vốn", "von")):
+        return {
+            "responded": True,
+            "text": COIN_RISK_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+        }
+    if any(k in low for k in ("trade.2026", "trade2026", "mở web", "mo web", "link web", "trang web", "vào web", "vao web")):
+        return {
+            "responded": True,
+            "text": f"{i18n.t(user_lang, 'cockpit_label', kind)}\n{signal_relay.trade2026_url()}",
+            "reply_markup": build_inline_keyboard("start_menu", user_lang, kind)
+        }
+    return {
+        "responded": True,
+        "text": COIN_FALLBACK_TEXT,
+        "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+    }
+
+
 def generate_bot_reply(
     text: str,
     chat_type: str = "private",
@@ -452,12 +575,18 @@ def generate_bot_reply(
     username: str = "",
     full_name: str = "",
     callback_data: Optional[str] = None,
-    token: Optional[str] = None
+    token: Optional[str] = None,
+    bot_kind: str = "forex"
 ) -> Dict[str, Any]:
     """
     Xử lý toàn bộ logic phản hồi của Bot cho cả Tin nhắn văn bản & Nút bấm Callback.
     Dùng chung cho cả Telegram Webhook thực tế và Trình giả lập (Simulator) ở Bước 9.
+    bot_kind: "forex" (NexusPilot, mặc định) hoặc "coin" (Trade.2026) — quyết
+    định toàn bộ nội dung trả lời (tên, ngưỡng điểm, link, FAQ, engine).
     """
+    # Loai bot: chi "coin" moi dung noi dung coin; moi gia tri khac = forex.
+    kind = "coin" if str(bot_kind or "forex").strip().lower() == "coin" else "forex"
+    is_coin = kind == "coin"
     is_group = chat_type in ("group", "supergroup")
     settings = db.get_settings()
     support_user = settings.get("support_username", "@phucanhmrt")
@@ -467,12 +596,21 @@ def generate_bot_reply(
     user_lang = i18n.normalize(db.get_user_lang(str(user_id)) or "VI")
     # Bam nut ban phim co dinh -> chuyen thanh callback tuong ung
     if not callback_data and text:
-        mapped = label_to_callback(text.strip())
+        mapped = label_to_callback(text.strip(), kind)
         if mapped:
             callback_data = mapped
 
     # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
     if callback_data:
+        # Bot coin khong co ban hang/bang gia/thanh toan — cac nut nay (chi co
+        # tren bot Forex/ban hang) tra ve cau tra loi mac dinh cua bot coin.
+        if is_coin and (callback_data in ("menu_pricing", "menu_payment", "pay_paypal", "pay_usdt", "pay_qr")
+                        or callback_data.startswith("prod_")):
+            return {
+                "responded": True,
+                "text": COIN_FALLBACK_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+            }
         if callback_data == "delete_history":
             if chat_type != "private":
                 return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
@@ -483,7 +621,7 @@ def generate_bot_reply(
                     ]}}
         if callback_data == "delete_history_cancel":
             return {"responded": True, "text": i18n.t(user_lang, "delete_kept"),
-                    "reply_markup": build_reply_keyboard(user_lang)}
+                    "reply_markup": build_reply_keyboard(user_lang, kind)}
         if callback_data == "delete_history_confirm":
             if chat_type != "private":
                 return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
@@ -502,7 +640,7 @@ def generate_bot_reply(
                 text = i18n.t(user_lang, "delete_done_partial").format(n=ok_n, m=fail_n)
             else:
                 text = i18n.t(user_lang, "delete_done_none")
-            return {"responded": True, "text": text, "reply_markup": build_reply_keyboard(user_lang)}
+            return {"responded": True, "text": text, "reply_markup": build_reply_keyboard(user_lang, kind)}
         if callback_data == "menu_news":
             return {
                 "responded": True,
@@ -528,15 +666,20 @@ def generate_bot_reply(
                 "reply_markup": build_inline_keyboard("news", user_lang)
             }
         if callback_data == "cockpit_text":
+            site_url = signal_relay.trade2026_url() if is_coin else signal_relay.COCKPIT_URL
             return {
                 "responded": True,
-                "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
+                "text": f"{i18n.t(user_lang, 'cockpit_label', kind)}\n{site_url}",
                 "reply_markup": None
             }
         if callback_data == "signal_chart":
-            sent = signal_relay.recent_signals(limit=1, only_sent=True)
+            # Chi lay tin hieu cung loai bot (coin chi doc tin coin, forex chi doc
+            # tin forex) — kho signals.json dung chung cho ca 2 bot.
+            sent = [r for r in signal_relay.recent_signals(limit=10, only_sent=True)
+                    if signal_relay.is_coin_signal(r) == is_coin]
             if not sent:
-                sent = signal_relay.recent_signals(limit=1, only_sent=True, include_demo=True)
+                sent = [r for r in signal_relay.recent_signals(limit=10, only_sent=True, include_demo=True)
+                        if signal_relay.is_coin_signal(r) == is_coin]
             if not sent:
                 return {"responded": True, "text": "📡 Chưa có tín hiệu nào được phát.", "reply_markup": None}
             sig = sent[0]
@@ -569,26 +712,26 @@ def generate_bot_reply(
         if callback_data == "menu_signal":
             return {
                 "responded": True,
-                "text": signal_relay.latest_signal_text(),
-                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+                "text": signal_relay.latest_coin_signal_text() if is_coin else signal_relay.latest_signal_text(),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
             }
         if callback_data == "menu_engines":
             return {
                 "responded": True,
-                "text": ENGINES_TEXT,
-                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+                "text": COIN_ENGINES_TEXT if is_coin else ENGINES_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
             }
         if callback_data == "menu_risk":
             return {
                 "responded": True,
-                "text": RISK_TEXT,
-                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+                "text": COIN_RISK_TEXT if is_coin else RISK_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
             }
         if callback_data == "menu_faq":
             return {
                 "responded": True,
-                "text": faq_engine.format_faq_by_language(user_lang),
-                "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+                "text": coin_faq_text() if is_coin else faq_engine.format_faq_by_language(user_lang),
+                "reply_markup": build_inline_keyboard("faq_lang", user_lang, kind)
             }
         if callback_data == "menu_faq_lang":
             return {
@@ -602,8 +745,8 @@ def generate_bot_reply(
             user_lang = lang
             return {
                 "responded": True,
-                "text": i18n.t(lang, "lang_set") + "\n\n" + faq_engine.format_faq_by_language(lang),
-                "reply_markup": build_reply_keyboard(lang)
+                "text": i18n.t(lang, "lang_set") + "\n\n" + (coin_faq_text() if is_coin else faq_engine.format_faq_by_language(lang)),
+                "reply_markup": build_reply_keyboard(lang, kind)
             }
         if callback_data == "menu_pricing":
             return {
@@ -612,6 +755,12 @@ def generate_bot_reply(
                 "reply_markup": build_inline_keyboard("pricing")
             }
         if callback_data == "menu_products":
+            if is_coin:
+                return {
+                    "responded": True,
+                    "text": COIN_WATCHLIST_TEXT,
+                    "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+                }
             return {
                 "responded": True,
                 "text": faq_engine.format_products_message(),
@@ -667,22 +816,24 @@ def generate_bot_reply(
                 "reply_markup": build_inline_keyboard("payment")
             }
         if callback_data == "menu_human_support":
+            # Bot coin tro ve web Trade.2026 thay vi shop_url (cua bot Forex/ban hang).
+            support_site_url = signal_relay.trade2026_url() if is_coin else shop_url
             return {
                 "responded": True,
                 "text": (
                     f"{i18n.t(user_lang, 'support_title')}\n\n"
                     f"• {i18n.t(user_lang, 'support_advisor')}: {support_user}\n"
-                    f"• {i18n.t(user_lang, 'support_site')}: {shop_url}\n"
+                    f"• {i18n.t(user_lang, 'support_site')}: {support_site_url}\n"
                     f"• {i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}\n"
                     f"• {i18n.t(user_lang, 'support_note')}"
                 ),
-                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
             }
         if callback_data == "menu_consultant":
             return {
                 "responded": True,
-                "text": i18n.t(user_lang, "menu_prompt"),
-                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+                "text": i18n.t(user_lang, "menu_prompt", kind),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
             }
 
     # 2. Nếu ở trong Nhóm (Bước 8), kiểm tra bộ lọc Keyword & Chống Spam trước
@@ -702,6 +853,16 @@ def generate_bot_reply(
     clean_text = (text or "").strip()
     cmd = clean_text.split()[0].lower().split("@")[0] if clean_text.startswith("/") else ""
 
+    # Bot coin khong co ban hang/bang gia/thanh toan/van chuyen — cac lenh nay
+    # (chi co tren bot Forex/ban hang) tra ve cau tra loi mac dinh cua bot coin.
+    # Dat TRUOC chuoi xu ly lenh vi /price//products//pay//ship co handler rieng.
+    if is_coin and cmd in ("/ship", "/price", "/products", "/pay"):
+        return {
+            "responded": True,
+            "text": COIN_FALLBACK_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
+        }
+
     # Lưu lịch sử tương tác khách hàng vào bảng customers (Bước 3)
     db.log_customer_interaction(
         telegram_id=user_id,
@@ -716,18 +877,18 @@ def generate_bot_reply(
         return {
             "responded": True,
             "text": (
-                (i18n.t(user_lang, "greet").format(name=full_name) + "\n"
-                 + i18n.t(user_lang, "welcome").split("\n", 1)[1])
-                if full_name else i18n.t(user_lang, "welcome")
+                (i18n.t(user_lang, "greet", kind).format(name=full_name) + "\n"
+                 + i18n.t(user_lang, "welcome", kind).split("\n", 1)[1])
+                if full_name else i18n.t(user_lang, "welcome", kind)
             ),
-            "reply_markup": build_reply_keyboard(user_lang)
+            "reply_markup": build_reply_keyboard(user_lang, kind)
         }
 
     if cmd in ("/tin_hieu", "/signal", "/tinhieu"):
         return {
             "responded": True,
-            "text": signal_relay.latest_signal_text(),
-            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            "text": signal_relay.latest_coin_signal_text() if is_coin else signal_relay.latest_signal_text(),
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
         }
 
     if cmd in ("/tin_moi", "/tin", "/news"):
@@ -754,29 +915,37 @@ def generate_bot_reply(
     if cmd == "/engines":
         return {
             "responded": True,
-            "text": ENGINES_TEXT,
-            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            "text": COIN_ENGINES_TEXT if is_coin else ENGINES_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
         }
 
     if cmd == "/risk":
         return {
             "responded": True,
-            "text": RISK_TEXT,
-            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            "text": COIN_RISK_TEXT if is_coin else RISK_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
         }
 
     if cmd == "/cockpit":
+        site_url = signal_relay.trade2026_url() if is_coin else signal_relay.COCKPIT_URL
         return {
             "responded": True,
-            "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
-            "reply_markup": build_inline_keyboard("start_menu", user_lang)
+            "text": f"{i18n.t(user_lang, 'cockpit_label', kind)}\n{site_url}",
+            "reply_markup": build_inline_keyboard("start_menu", user_lang, kind)
+        }
+
+    if cmd == "/trade2026" and is_coin:
+        return {
+            "responded": True,
+            "text": f"{i18n.t(user_lang, 'cockpit_label', kind)}\n{signal_relay.trade2026_url()}",
+            "reply_markup": build_inline_keyboard("start_menu", user_lang, kind)
         }
 
     if cmd == "/help":
         return {
             "responded": True,
-            "text": i18n.t(user_lang, "help"),
-            "reply_markup": build_inline_keyboard("start_menu", user_lang)
+            "text": i18n.t(user_lang, "help", kind),
+            "reply_markup": build_inline_keyboard("start_menu", user_lang, kind)
         }
 
     if cmd == "/ship":
@@ -790,8 +959,8 @@ def generate_bot_reply(
     if cmd == "/faq":
         return {
             "responded": True,
-            "text": faq_engine.format_faq_by_language(user_lang),
-            "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+            "text": coin_faq_text() if is_coin else faq_engine.format_faq_by_language(user_lang),
+            "reply_markup": build_inline_keyboard("faq_lang", user_lang, kind)
         }
 
     if cmd == "/price":
@@ -825,15 +994,20 @@ def generate_bot_reply(
         }
 
     if cmd == "/support":
+        support_site_url = signal_relay.trade2026_url() if is_coin else shop_url
         return {
             "responded": True,
             "text": (f"{i18n.t(user_lang, 'support_short')}: {support_user}\n"
-                    f"{i18n.t(user_lang, 'support_or')}: {shop_url}\n"
+                    f"{i18n.t(user_lang, 'support_or')}: {support_site_url}\n"
                     f"{i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}"),
-            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang, kind)
         }
 
-    # 4. Xử lý câu hỏi tự nhiên qua FAQ Engine & AI Consultant (Bước 7 & Bước 8)
+    # 4. Xử lý câu hỏi tự nhiên. Bot coin KHÔNG dùng faq_engine.generate_ai_response
+    # (chứa nội dung Forex: ngưỡng 80, Cockpit, 3 engine MT5) mà trả lời theo
+    # từ khóa coin; không khớp từ khóa thì về câu trả lời mặc định của bot coin.
+    if is_coin:
+        return _coin_natural_reply(clean_text, user_lang, kind)
     ai_res = faq_engine.generate_ai_response(clean_text, is_group=is_group, pref_lang=user_lang)
     return {
         "responded": True,
@@ -871,9 +1045,12 @@ def _enrich_username(user_id: str, token: str | None = None) -> None:
         pass
 
 
-def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None) -> Dict[str, Any]:
+def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None,
+                            bot_kind: str = "forex") -> Dict[str, Any]:
     """
     BƯỚC 6: Nhận dữ liệu từ Telegram Webhook (hoặc Polling), xử lý và gửi phản hồi.
+    bot_kind: "forex" (mặc định) hoặc "coin" — truyền xuống generate_bot_reply
+    để chọn đúng nội dung bot. Webhook legacy /webhook không truyền -> forex.
     """
     try:
         # Xử lý Callback Query (khi khách bấm nút Inline)
@@ -901,7 +1078,8 @@ def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None)
                 username=from_user.get("username", ""),
                 full_name=f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
                 callback_data=data,
-                token=token
+                token=token,
+                bot_kind=bot_kind
             )
             if reply.get("responded") and reply.get("text"):
                 if reply.get("photos"):
@@ -970,7 +1148,8 @@ def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None)
             user_id=str(from_user.get("id", chat_id)),
             username=from_user.get("username", ""),
             full_name=full_name,
-            token=token
+            token=token,
+            bot_kind=bot_kind
         )
 
         if not reply.get("responded"):
@@ -1100,8 +1279,11 @@ def telegram_webhook_for_bot(bot_id: str):
     if not token:
         token = None  # -> telegram_api dung BOT_TOKEN mac dinh (bot chinh)
 
+    # Loai bot tu bang dang ky (kind: "coin" cho Trade.2026, "forex" cho
+    # NexusPilot). Chi "coin" moi dung noi dung coin; gia tri khac = forex.
+    bot_kind = "coin" if str(bot.get("kind", "") or "").strip().lower() == "coin" else "forex"
     update = request.get_json(silent=True) or {}
-    result = process_telegram_update(update, token=token)
+    result = process_telegram_update(update, token=token, bot_kind=bot_kind)
     return jsonify(result)
 
 

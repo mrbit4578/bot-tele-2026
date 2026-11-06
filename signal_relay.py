@@ -27,6 +27,8 @@ import hmac
 import json
 import os
 import threading
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -238,6 +240,8 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     entry = _num(payload.get("entry_price", payload.get("entry")))
     sl = _num(payload.get("stop_loss", payload.get("sl")))
     tp1 = _num(payload.get("tp1"))
+    is_coin = (str(payload.get("kind", "")).strip().lower() == "coin"
+               or str(payload.get("bot", "")).strip().lower() == "trademrbit")
     if not symbol:
         return None, "Thieu symbol."
     if direction not in ("BUY", "SELL"):
@@ -264,7 +268,7 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
         "quality": str(payload.get("quality", "")).strip(),
         "suggested_lot": _num(payload.get("suggested_lot", payload.get("lot"))),
         "rationale": str(payload.get("rationale", "")).strip()[:400],
-        "source": str(payload.get("source", "cockpit")).strip()[:40],
+        "source": str(payload.get("source") or payload.get("nguon") or ("Trade.2026" if is_coin else "cockpit")).strip()[:40],
         "demo": bool(payload.get("demo", False)),
         "change_24h": _num(payload.get("change_24h")),
         "high_24h": _num(payload.get("high_24h")),
@@ -378,6 +382,7 @@ def format_signal_message(sig: Dict[str, Any]) -> str:
     entry = sig.get("entry_price")
     direction = sig["direction"]
     heart = "💚" if direction == "BUY" else "❤️"
+    coin_sig = is_coin_signal(sig)
     lines = []
     if sig.get("demo"):
         lines.append("🧪 **BẢN TEST THIẾT KẾ — KHÔNG PHẢI TÍN HIỆU THẬT**")
@@ -393,6 +398,11 @@ def format_signal_message(sig: Dict[str, Any]) -> str:
     for key, share in tp_defs:
         v = sig.get(key)
         if v is not None and entry:
+            # Coin Trade.2026 không chia tỉ trọng vị thế 50/30/20 — TP tính
+            # theo RR (TP1 RR 1:2, TP2 RR 1:3). Hiển thị RR thực tế.
+            if coin_sig and sl is not None:
+                risk = abs(_pct(entry, sl, direction))
+                share = f"RR {abs(_pct(entry, v, direction)) / risk:.2f}R" if risk else "RR —"
             rows.append(f"{key.upper()} {share}  {_fmt_price(v)}  ({_pct(entry, v, direction):+.2f}%)")
     lines.append("```\n" + "\n".join(rows) + "\n```")
     lines.append(f"`{order_line(sig)}`")
@@ -497,7 +507,7 @@ def detail_view(sig: Dict[str, Any]) -> str:
         lines.append(f"⚠️ Radar: {sig['radar_note'][:200]}")
     if sig.get("rationale"):
         lines.append(f"📝 {sig['rationale'][:200]}")
-    src = sig.get("data_source") or sig.get("source") or "NexusPilot"
+    src = sig.get("data_source") or sig.get("source") or ("Trade.2026" if is_coin_signal(sig) else "NexusPilot")
     vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
     lines.append(f"Nguồn: {src} · Xem lúc {vn_now.strftime('%H:%M %d/%m')} (giờ VN)")
     lines.append("⚠️ Tham khảo, không phải lời khuyên đầu tư.")
@@ -516,3 +526,115 @@ def latest_signal_text() -> str:
         )
     sig = sent[0]
     return "📡 **TÍN HIỆU GẦN NHẤT:**\n\n" + format_signal_message(sig)
+
+
+# --- /tin_hieu cho bot coin: đọc tín hiệu mới nhất từ Supabase Trade.2026 ---
+TRADE2026_SUPABASE_URL_DEFAULT = "https://fagveiomuwuyuzzeepvk.supabase.co"
+COIN_SIGNAL_MAX_AGE_HOURS = 24
+
+
+def _coin_empty_state_text() -> str:
+    """Văn bản khi chưa có tín hiệu coin đạt chuẩn trong 24h qua (cũng là
+    fallback khi Supabase chưa cấu hình hoặc lỗi)."""
+    return (
+        "📡 Chưa có tín hiệu coin đạt chuẩn nào được phát.\n"
+        "Trạm 24/7 Trade.2026 chỉ phát tín hiệu coin có điểm từ 70/100 trở lên "
+        "(giai đoạn alert_ready hoặc retest_in_progress). "
+        "Khi trạm phát hiện tín hiệu coin đạt chuẩn, bot sẽ tự gửi về đây.\n\n"
+        "Top coin theo dõi: BTC, ETH, SOL, BNB, DOGE, DYDX, WIF, OP, RUNE, INJ, SUI, XAUT."
+    )
+
+
+def _trade2026_supabase() -> Tuple[Optional[str], Optional[str]]:
+    """(base_url, anon_key) cho dự án Supabase Trade.2026 (almond-fence).
+    Key chỉ đọc từ biến môi trường — KHÔNG hardcode giá trị key vào code."""
+    base = (os.getenv("TRADE2026_SUPABASE_URL", TRADE2026_SUPABASE_URL_DEFAULT) or "").strip().rstrip("/")
+    key = (os.getenv("TRADE2026_SUPABASE_ANON_KEY", "") or "").strip()
+    if not base or not key:
+        return None, None
+    return base, key
+
+
+def _parse_ts(ts: Any) -> Optional[datetime]:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _row_to_signal(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Chuyển 1 dòng bảng signals (Supabase) thành signal chuẩn của relay."""
+    coin = str(row.get("coin", "")).strip().upper()
+    side = str(row.get("side", "")).strip().lower()
+    direction = "BUY" if side == "long" else "SELL"
+    return {
+        "coin": coin,
+        "bot": "trademrbit",
+        "kind": "coin",
+        "symbol": coin + "USDT" if coin else "",
+        "side": side,
+        "direction": direction,
+        "timeframe": "M15",
+        "entry_price": _num(row.get("gia_vao")),
+        "stop_loss": _num(row.get("sl")),
+        "tp1": _num(row.get("tp1")),
+        "tp2": _num(row.get("tp2")),
+        "tp3": None,
+        "score": _num(row.get("diem")),
+        "engine": "Trade.2026 Crypto",
+        "engine_name": "Trade.2026 Crypto",
+        "source": "Trade.2026",
+        "bias_4h": str(row.get("bias_4h") or "").strip().upper(),
+        "phien": str(row.get("phien") or "").strip(),
+        "phase": str(row.get("phase") or "").strip(),
+        "ts_vao": str(row.get("ts_vao") or "").strip(),
+        "demo": False,
+        "score_breakdown": [],
+        "candles": [],
+    }
+
+
+def latest_coin_signal_text() -> str:
+    """Văn bản cho lệnh /tin_hieu của bot coin: tín hiệu coin đạt chuẩn
+    mới nhất (trong 24h qua) từ bảng signals của Supabase Trade.2026.
+    Lỗi/mất cấu hình -> về trạng thái trống, KHÔNG bao giờ làm vỡ reply."""
+    empty = _coin_empty_state_text()
+    base, key = _trade2026_supabase()
+    if not base or not key:
+        return empty
+    url = (f"{base}/rest/v1/signals"
+           "?select=coin,side,diem,gia_vao,sl,tp1,tp2,rr,phase,bias_4h,phien,ts_vao"
+           "&loai=eq.that&diem=gte.70&order=ts_vao.desc&limit=5")
+    try:
+        # Chỉ gửi header apikey (key sb_ là opaque, không phải JWT — KHÔNG
+        # gửi Authorization: Bearer, sẽ bị Supabase trả 401 PGRST301).
+        req = urllib.request.Request(url, headers={"apikey": key, "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return empty
+    if not isinstance(rows, list):
+        return empty
+    now = datetime.now(timezone.utc)
+    fresh = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        dt = _parse_ts(row.get("ts_vao"))
+        if dt is None:
+            continue  # ts không đọc được -> coi như dữ liệu lỗi, bỏ qua
+        if (now - dt).total_seconds() <= COIN_SIGNAL_MAX_AGE_HOURS * 3600:
+            fresh.append((dt, row))
+    if not fresh:
+        return empty
+    dt, row = fresh[0]
+    sig = _row_to_signal(row)
+    vn = dt.astimezone(timezone(timedelta(hours=7)))
+    return ("📡 **TÍN HIỆU COIN GẦN NHẤT:**\n\n"
+            + format_signal_message(sig)
+            + f"\n🕐 Tín hiệu lúc {vn.strftime('%H:%M %d/%m/%Y')} (giờ VN)")

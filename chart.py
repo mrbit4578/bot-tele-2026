@@ -1,8 +1,8 @@
 """
-chart.py — Vẽ chart nến cho tín hiệu NexusPilot (Pillow, không cần matplotlib).
+chart.py — Vẽ chart nến cho tín hiệu (Pillow, không cần matplotlib).
 
 Nguồn nến (theo thứ tự ưu tiên):
-1. Nến kèm trong payload relay từ Cockpit (TwelveData, đủ mọi cặp).
+1. Nến kèm trong payload relay từ trạm/Cockpit (TwelveData, đủ mọi cặp).
 2. CoinGecko OHLC miễn phí cho BTCUSD (không cần key).
 3. Binance klines cho BTCUSD (thử, lỗi thì bỏ qua).
 Không có nến thật -> không vẽ chart (không bao giờ vẽ nến giả).
@@ -183,7 +183,7 @@ def draw_chart(candles: List[Dict[str, float]], levels: Dict[str, Optional[float
 
 def draw_detail_card(sig: Dict[str, Any], breakdown: List[Dict[str, Any]],
                      width: int = 1080) -> Optional[bytes]:
-    """Thẻ chi tiết kiểu Cockpit: điểm lớn, engine, từng thành phần điểm + thanh tỉ lệ,
+    """Thẻ chi tiết tín hiệu: điểm lớn, engine, từng thành phần điểm + thanh tỉ lệ,
     rủi ro/lợi nhuận, nguồn + thời gian. Dữ liệu lấy từ tín hiệu thật, không bịa."""
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -239,9 +239,13 @@ def draw_detail_card(sig: Dict[str, Any], breakdown: List[Dict[str, Any]],
         risk = abs(pct(sl))
         rr = " / ".join(f"{abs(pct(t)) / risk:.2f}R" for t in tps) if risk else "-"
         d.text((40, y + 10), f"Rủi ro {risk:.2f}%  ·  Tỉ lệ R: {rr}", fill=TEXT, font=font)
-    src = sig.get("data_source") or sig.get("source") or "NexusPilot"
+    is_coin = str(sig.get("kind", "")).strip().lower() == "coin" or str(sig.get("bot", "")).strip().lower() == "trademrbit"
+    src = sig.get("data_source") or sig.get("source") or ("Trade.2026" if is_coin else "NexusPilot")
     d.text((40, y + 58), f"Nguồn: {src}", fill=(150, 165, 185), font=font_sm)
-    d.text((40, y + 96), "NexusPilot Pro — tham khảo, không phải lời khuyên đầu tư.",
+    foot = ("Trade.2026 — tham khảo, không phải lời khuyên đầu tư."
+            if is_coin else
+            "NexusPilot Pro — tham khảo, không phải lời khuyên đầu tư.")
+    d.text((40, y + 96), foot,
            fill=(150, 165, 185), font=font_sm)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
