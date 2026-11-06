@@ -15,6 +15,12 @@ Cockpit NexusPilot (trình duyệt) POST tín hiệu đạt chuẩn về endpoin
   để lệnh /tin_hieu đọc lại tín hiệu mới nhất.
 
 Nơi nhận tin: biến môi trường SIGNAL_CHAT_ID, không có thì dùng CHAT_ID.
+
+Tín hiệu coin Trade.2026 (bot @trademrbit_bot): trạm 24/7 (GitHub Actions)
+không gửi thẳng Telegram mà POST về /api/signal-relay của web này (header
+X-Signal-Key). Relay định tuyến theo payload kind/bot: kind="coin" ->
+ngưỡng 70/100, chống trùng 60 phút cho mỗi coin + chiều, chat + token lấy
+từ bảng đăng ký bots (chat_id + tên biến môi trường token_env).
 """
 
 import hmac
@@ -28,6 +34,18 @@ from typing import Any, Dict, List, Optional, Tuple
 COCKPIT_URL = "https://mt5-mrbit-2026-v2.onrender.com/"
 MAX_RECORDS = 50
 _LOCK = threading.Lock()
+
+# --- Tín hiệu coin Trade.2026 ---
+COIN_MIN_SCORE = 70
+COIN_DEDUPE_MINUTES = 60
+COIN_BOT_ID = "trademrbit"
+
+
+def trade2026_url() -> str:
+    """Link web Trade.2026 (nút Charts của tín hiệu coin). Đổi bằng biến
+    môi trường TRADE2026_URL nếu app có domain riêng."""
+    return (os.getenv("TRADE2026_URL", "https://trade-2026-tau.vercel.app").strip().rstrip("/")
+            or "https://trade-2026-tau.vercel.app")
 
 
 def _data_dir() -> Path:
@@ -67,6 +85,82 @@ def dedupe_minutes() -> int:
 def destination_chat_id() -> str:
     return (os.getenv("SIGNAL_CHAT_ID", "").strip()
             or os.getenv("CHAT_ID", "").strip())
+
+
+# --- Định tuyến theo loại tín hiệu (coin Trade.2026 vs forex NexusPilot) ---
+def is_coin_signal(sig: Dict[str, Any]) -> bool:
+    """Tín hiệu coin Trade.2026: payload có kind='coin' hoặc bot='trademrbit'."""
+    return (str(sig.get("kind", "")).strip().lower() == "coin"
+            or str(sig.get("bot", "")).strip().lower() == COIN_BOT_ID)
+
+
+def display_symbol(sig: Dict[str, Any]) -> str:
+    """Tên cặp hiển thị: coin -> BTC/USDT, forex -> symbol gốc (XAUUSD)."""
+    if sig.get("coin"):
+        return f"{sig['coin']}/USDT"
+    return sig.get("symbol", "")
+
+
+def min_score_for(sig: Dict[str, Any]) -> float:
+    """Ngưỡng điểm theo loại: coin 70, forex theo SIGNAL_MIN_SCORE (mặc định 80)."""
+    if is_coin_signal(sig):
+        try:
+            return float(os.getenv("COIN_MIN_SCORE", str(COIN_MIN_SCORE)))
+        except ValueError:
+            return float(COIN_MIN_SCORE)
+    return min_score()
+
+
+def dedupe_minutes_for(sig: Dict[str, Any]) -> int:
+    """Cửa sổ chống trùng theo loại: coin 60 phút, forex theo SIGNAL_DEDUPE_MINUTES (30)."""
+    if is_coin_signal(sig):
+        try:
+            return int(os.getenv("COIN_DEDUPE_MINUTES", str(COIN_DEDUPE_MINUTES)))
+        except ValueError:
+            return COIN_DEDUPE_MINUTES
+    return dedupe_minutes()
+
+
+def dedupe_key_for(sig: Dict[str, Any]) -> str:
+    """Khóa chống trùng theo loại: coin -> mỗi coin + chiều; forex -> symbol + chiều + engine."""
+    if is_coin_signal(sig):
+        return f"coin|{sig.get('coin') or sig['symbol']}|{sig['direction']}"
+    return dedupe_key(sig)
+
+
+def coin_bot() -> Optional[Dict[str, Any]]:
+    """Bot coin đang bật trong bảng đăng ký bots (web quản lý nhiều bot).
+    Trả None nếu chưa có bảng/chưa bật bot coin nào."""
+    try:
+        from database import DatabaseManager
+        for b in DatabaseManager().get_bots():
+            if str(b.get("kind", "")).strip().lower() == "coin" and b.get("enabled"):
+                return b
+    except Exception:
+        return None
+    return None
+
+
+def coin_chat_id() -> str:
+    bot = coin_bot()
+    if bot and str(bot.get("chat_id", "")).strip():
+        return str(bot["chat_id"]).strip()
+    return ""
+
+
+def coin_token() -> str:
+    """Token bot coin: lấy từ biến môi trường có TÊN ghi trong bảng bots
+    (cột token_env, vd BOT_TOKEN_TRADEMRBIT). Giá trị token không nằm ở đây."""
+    bot = coin_bot()
+    env_name = str((bot or {}).get("token_env", "") or "BOT_TOKEN_TRADEMRBIT").strip()
+    return os.getenv(env_name, "").strip()
+
+
+def destination_chat_id_for(sig: Dict[str, Any]) -> str:
+    """Chat nhận tín hiệu: coin -> chat_id trong bảng bots; forex -> SIGNAL_CHAT_ID/CHAT_ID."""
+    if is_coin_signal(sig):
+        return coin_chat_id() or destination_chat_id()
+    return destination_chat_id()
 
 
 def check_key(provided: Optional[str]) -> bool:
@@ -129,6 +223,16 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     """Trả về (signal đã chuẩn hóa, '') hoặc (None, lý do lỗi)."""
     if not isinstance(payload, dict):
         return None, "Payload phai la JSON object."
+    payload = dict(payload)
+    # Bí danh kiểu coin (Trade.2026) -> tên chuẩn của relay.
+    if not str(payload.get("symbol", "")).strip() and payload.get("coin"):
+        payload["symbol"] = str(payload["coin"]).strip().upper() + "USDT"
+    if not str(payload.get("direction", "")).strip() and payload.get("side"):
+        payload["direction"] = "BUY" if str(payload["side"]).strip().lower() == "long" else "SELL"
+    if payload.get("score") is None and payload.get("diem") is not None:
+        payload["score"] = payload["diem"]
+    if payload.get("entry_price") is None and payload.get("entry") is None and payload.get("gia_vao") is not None:
+        payload["entry"] = payload["gia_vao"]
     symbol = str(payload.get("symbol", "")).strip().upper()
     direction = str(payload.get("direction", "")).strip().upper()
     entry = _num(payload.get("entry_price", payload.get("entry")))
@@ -172,6 +276,15 @@ def validate_signal(payload: Any) -> Tuple[Optional[Dict[str, Any]], str]:
         "data_source": str(payload.get("data_source", "")).strip()[:60],
         "last_price": _num(payload.get("last_price", payload.get("price"))),
         "spread": str(payload.get("spread", "")).strip()[:30],
+        # Trường riêng của tín hiệu coin Trade.2026 (forex để trống).
+        "kind": str(payload.get("kind", "")).strip().lower()[:20],
+        "bot": str(payload.get("bot", "")).strip().lower()[:40],
+        "coin": str(payload.get("coin", "")).strip().upper()[:20],
+        "side": str(payload.get("side", "")).strip().lower()[:10],
+        "phase": str(payload.get("phase", "")).strip()[:40],
+        "bias_4h": str(payload.get("bias_4h", "")).strip().upper()[:20],
+        "phien": str(payload.get("phien", "")).strip()[:20],
+        "ts_vao": str(payload.get("ts_vao", "")).strip()[:40],
     }
     bd = []
     if isinstance(payload.get("score_breakdown"), list):
@@ -199,13 +312,14 @@ def dedupe_key(sig: Dict[str, Any]) -> str:
 
 
 def find_duplicate(sig: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Tìm tín hiệu đã GỬI gần đây trùng khóa chống trùng."""
-    window = timedelta(minutes=dedupe_minutes())
+    """Tìm tín hiệu đã GỬI gần đây trùng khóa chống trùng (khóa + cửa sổ theo loại tín hiệu)."""
+    window = timedelta(minutes=dedupe_minutes_for(sig))
+    key = dedupe_key_for(sig)
     now = datetime.now(timezone.utc)
     for rec in load_records():
         if not rec.get("_sent") or rec.get("demo"):
             continue
-        if dedupe_key(rec) != dedupe_key(sig):
+        if dedupe_key_for(rec) != key:
             continue
         try:
             ts = datetime.fromisoformat(rec.get("_received_at", ""))
@@ -244,7 +358,14 @@ def order_line(sig: Dict[str, Any]) -> str:
 
 
 def signal_keyboard(sig: Dict[str, Any]) -> Dict[str, Any]:
-    """Nut duoi tin hieu: Charts (xem chi tiet) | Chat (nick hay) | CHEP MA (copy lenh)."""
+    """Nut duoi tin hieu: Charts | Chat (nick hay) | CHEP MA (copy lenh).
+    Coin: Charts mo web Trade.2026. Forex: Charts mo chi tiet trong bot."""
+    if is_coin_signal(sig):
+        return {"inline_keyboard": [
+            [{"text": "📊 Charts", "url": trade2026_url()},
+             {"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}],
+            [{"text": "📋 CHÉP MÃ", "copy_text": {"text": order_line(sig)}}],
+        ]}
     return {"inline_keyboard": [
         [{"text": "📊 Charts", "callback_data": "signal_chart"},
          {"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}],
@@ -260,10 +381,10 @@ def format_signal_message(sig: Dict[str, Any]) -> str:
     lines = []
     if sig.get("demo"):
         lines.append("🧪 **BẢN TEST THIẾT KẾ — KHÔNG PHẢI TÍN HIỆU THẬT**")
-        lines.append("Số liệu dưới đây chỉ minh họa bố cục, chưa đủ điều kiện phát thật (80/100).")
+        lines.append(f"Số liệu dưới đây chỉ minh họa bố cục, chưa đủ điều kiện phát thật ({min_score_for(sig):.0f}/100).")
     score_txt = f" · {sig['score']:.0f}/100 điểm" if sig.get("score") is not None else ""
     engine_txt = f" · {sig['engine_name'] or sig['engine']}" if (sig.get("engine_name") or sig.get("engine")) else ""
-    lines.append(f"#{sig['symbol']} {heart} **{direction}**{score_txt}{engine_txt} ({sig['timeframe']})")
+    lines.append(f"#{display_symbol(sig)} {heart} **{direction}**{score_txt}{engine_txt} ({sig['timeframe']})")
     rows = [f"Entry   {_fmt_price(entry)}"]
     sl = sig.get("stop_loss")
     if sl is not None and entry:
@@ -290,13 +411,30 @@ def format_signal_message(sig: Dict[str, Any]) -> str:
         lines.append(f"Lot gợi ý {sig['suggested_lot']:.2f} · Tối đa 0.02 theo guardrail")
     if sig.get("rationale"):
         lines.append(f"📝 {sig['rationale'][:160]}")
+    if is_coin_signal(sig):
+        coin_info = []
+        if sig.get("bias_4h"):
+            coin_info.append(f"Bias 4H: {sig['bias_4h']}")
+        if sig.get("phien"):
+            coin_info.append(f"Phiên: {sig['phien']}")
+        if sig.get("phase"):
+            coin_info.append(f"Giai đoạn: {sig['phase']}")
+        if coin_info:
+            lines.append("🪙 " + " · ".join(coin_info))
     vn_now = datetime.now(timezone.utc) + timedelta(hours=7)
     lines.append(f"⏰ {vn_now.strftime('%d/%m/%Y %H:%M')} (giờ VN)")
-    lines.append(
-        "⚠️ Tín hiệu tham khảo từ hệ thống NexusPilot Pro — không phải lời khuyên "
-        "đầu tư. Hãy tự kiểm tra và quản trị rủi ro trước khi vào lệnh."
-    )
-    lines.append(f"🖥 Cockpit: {COCKPIT_URL}")
+    if is_coin_signal(sig):
+        lines.append(
+            "⚠️ Tín hiệu tham khảo từ trạm 24/7 Trade.2026 — không phải lời khuyên "
+            "đầu tư. Mọi quyết định lệnh thật do BẠN xác nhận."
+        )
+        lines.append(f"📊 Trade.2026: {trade2026_url()}")
+    else:
+        lines.append(
+            "⚠️ Tín hiệu tham khảo từ hệ thống NexusPilot Pro — không phải lời khuyên "
+            "đầu tư. Hãy tự kiểm tra và quản trị rủi ro trước khi vào lệnh."
+        )
+        lines.append(f"🖥 Cockpit: {COCKPIT_URL}")
     return "\n".join(lines)
 
 
@@ -329,7 +467,7 @@ def detail_view(sig: Dict[str, Any]) -> str:
     mà mở thành phần điểm, cảnh báo radar, phiên, nguồn + độ tươi dữ liệu."""
     direction = sig["direction"]
     heart = "💚" if direction == "BUY" else "❤️"
-    lines = [f"🔍 **CHI TIẾT TÍN HIỆU — #{sig['symbol']} {heart} {direction} ({sig['timeframe']})**"]
+    lines = [f"🔍 **CHI TIẾT TÍN HIỆU — #{display_symbol(sig)} {heart} {direction} ({sig['timeframe']})**"]
     score_txt = f"{sig['score']:.0f}/100" if sig.get("score") is not None else "?"
     lines.append(f"Điểm: **{score_txt}**" + (f" · Chất lượng: {sig['quality']}" if sig.get("quality") else ""))
     lines.append(f"Engine: {sig['engine_name'] or sig['engine'] or '-'}")
@@ -342,6 +480,8 @@ def detail_view(sig: Dict[str, Any]) -> str:
             if f.get("detail"):
                 line += f" · {f['detail']}"
             lines.append(line)
+    elif is_coin_signal(sig):
+        lines.append("_(Tín hiệu coin không kèm breakdown thành phần điểm.)_")
     else:
         lines.append("_(Chi tiết điểm thành phần sẽ hiện khi Cockpit gửi kèm breakdown — xem bản vá v2.)_")
     entry = sig.get("entry_price")

@@ -83,6 +83,26 @@ def fetch_btc_candles(limit: int = 48) -> List[Dict[str, float]]:
     return []
 
 
+def fetch_coin_candles(symbol: str, limit: int = 60, interval: str = "15m") -> List[Dict[str, float]]:
+    """Nến coin thật từ Binance public klines (không cần key).
+    symbol dạng BTCUSDT. Lỗi mạng -> trả [] (relay vẫn gửi tin không chart)."""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return []
+    if not sym.endswith("USDT"):
+        sym += "USDT"
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": sym, "interval": interval, "limit": limit},
+            timeout=12, headers={"User-Agent": "NexusPilotBot/1.0"})
+        r.raise_for_status()
+        return normalize_candles(r.json())
+    except Exception as e:
+        logger.warning(f"Binance klines {sym} lỗi: {e}")
+    return []
+
+
 def _fmt(v: float) -> str:
     if v >= 1000:
         return f"{v:,.2f}"

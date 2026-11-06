@@ -223,6 +223,56 @@ def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: O
         return {"ok": False, "description": str(e)}
 
 
+# Menu lệnh chuẩn cài cho mọi bot (dùng chung cho Bước 1 và xác thực bot mới).
+BOT_COMMANDS = [
+    {"command": "start", "description": "Menu chính NexusPilot Pro"},
+    {"command": "tin_hieu", "description": "Tín hiệu đạt chuẩn gần nhất"},
+    {"command": "engines", "description": "Giới thiệu 3 engine tín hiệu"},
+    {"command": "risk", "description": "Quy tắc quản trị rủi ro"},
+    {"command": "cockpit", "description": "Mở web cockpit NexusPilot"},
+    {"command": "tin_moi", "description": "Tin kinh tế mới nhất (24h)"},
+    {"command": "tin_sap_ra", "description": "Lịch kinh tế 7 ngày tới"},
+    {"command": "tin_da_ra", "description": "Tin kinh tế đã ra 7 ngày qua"},
+    {"command": "faq", "description": "Câu hỏi thường gặp (VI / EN / RU)"},
+    {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"},
+    {"command": "help", "description": "Danh sách lệnh của bot"}
+]
+
+# URL gốc của app (để đặt webhook riêng cho từng bot: <base>/webhook/<bot_id>).
+APP_BASE_URL_DEFAULT = "https://bot-tele-2026.vercel.app"
+
+
+def _app_base_url() -> str:
+    raw = (get_env_config().get("WEBHOOK_URL", "") or "").strip().rstrip("/")
+    if raw.startswith("https://"):
+        if raw.endswith("/webhook"):
+            raw = raw[:-8]
+        return raw
+    return APP_BASE_URL_DEFAULT
+
+
+# Username của bot env (bot chính, token nằm trong biến môi trường) — lấy
+# qua getMe 1 lần rồi cache lại, dùng để nhận diện bot nào được xử lý tin
+# nhắn ở /webhook/<bot_id>. Bot khác chưa có token env thì webhook chỉ
+# trả 200 và ghi log (không xử lý tin nhắn).
+_LEGACY_BOT_USERNAME: Optional[str] = None
+_LEGACY_BOT_CHECKED = False
+
+
+def _legacy_bot_username() -> str:
+    global _LEGACY_BOT_USERNAME, _LEGACY_BOT_CHECKED
+    if _LEGACY_BOT_CHECKED:
+        return _LEGACY_BOT_USERNAME or ""
+    _LEGACY_BOT_CHECKED = True
+    try:
+        me = telegram_api("getMe")
+        if me.get("ok"):
+            _LEGACY_BOT_USERNAME = str((me.get("result") or {}).get("username", "")).lower()
+    except Exception:
+        pass
+    return _LEGACY_BOT_USERNAME or ""
+
+
 ENGINES_TEXT = (
     "🧠 **3 ENGINE TÍN HIỆU CỦA NEXUSPILOT PRO**\n\n"
     "1️⃣ **SMC ICT Alpha** — Đọc cấu trúc thị trường kiểu ICT: Order Block, "
@@ -401,7 +451,8 @@ def generate_bot_reply(
     user_id: str = "guest",
     username: str = "",
     full_name: str = "",
-    callback_data: Optional[str] = None
+    callback_data: Optional[str] = None,
+    token: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Xử lý toàn bộ logic phản hồi của Bot cho cả Tin nhắn văn bản & Nút bấm Callback.
@@ -439,7 +490,7 @@ def generate_bot_reply(
             ids = users_mod.get_bot_message_ids(str(user_id))
             ok_n = fail_n = 0
             for mid in reversed(ids):
-                res = telegram_api("deleteMessage", {"chat_id": user_id, "message_id": mid})
+                res = telegram_api("deleteMessage", {"chat_id": user_id, "message_id": mid}, token=token)
                 if res.get("ok"):
                     ok_n += 1
                 else:
@@ -792,7 +843,7 @@ def generate_bot_reply(
     }
 
 
-def _enrich_username(user_id: str) -> None:
+def _enrich_username(user_id: str, token: str | None = None) -> None:
     """Nếu user chưa có username trên bản ghi, hỏi Telegram getChat để lấy.
     Chỉ thử lại sau 24h (chống gọi API lặp cho acc vốn không đặt username)."""
     try:
@@ -808,7 +859,7 @@ def _enrich_username(user_id: str) -> None:
         except (ValueError, TypeError):
             pass
         users_mod.mark_username_checked(user_id)
-        res = telegram_api("getChat", {"chat_id": user_id})
+        res = telegram_api("getChat", {"chat_id": user_id}, token=token)
         if res.get("ok"):
             r = res.get("result") or {}
             uname = r.get("username", "")
@@ -820,7 +871,7 @@ def _enrich_username(user_id: str) -> None:
         pass
 
 
-def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
+def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None) -> Dict[str, Any]:
     """
     BƯỚC 6: Nhận dữ liệu từ Telegram Webhook (hoặc Polling), xử lý và gửi phản hồi.
     """
@@ -840,8 +891,8 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                                  f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
                                  from_user.get("username", ""),
                                  db.get_user_lang(str(from_user.get("id", chat_id))) or "")
-            _enrich_username(str(from_user.get("id", chat_id)))
-            telegram_api("answerCallbackQuery", {"callback_query_id": cb_id})
+            _enrich_username(str(from_user.get("id", chat_id)), token)
+            telegram_api("answerCallbackQuery", {"callback_query_id": cb_id}, token=token)
 
             reply = generate_bot_reply(
                 text="",
@@ -849,7 +900,8 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                 user_id=str(from_user.get("id", chat_id)),
                 username=from_user.get("username", ""),
                 full_name=f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
-                callback_data=data
+                callback_data=data,
+                token=token
             )
             if reply.get("responded") and reply.get("text"):
                 if reply.get("photos"):
@@ -861,7 +913,7 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                         }
                         if _i == 0 and reply.get("reply_markup"):
                             _pb["reply_markup"] = reply["reply_markup"]
-                        telegram_api("sendPhoto", _pb,
+                        telegram_api("sendPhoto", _pb, token=token,
                                      files={"photo": ("chart.png", _b64.b64decode(_ph["b64"]), "image/png")})
                 elif reply.get("photo_b64"):
                     import base64 as _b64
@@ -872,7 +924,7 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                     }
                     if reply.get("reply_markup"):
                         photo_payload["reply_markup"] = reply["reply_markup"]
-                    telegram_api("sendPhoto", photo_payload,
+                    telegram_api("sendPhoto", photo_payload, token=token,
                                  files={"photo": ("chart.png", png_bytes, "image/png")})
                 else:
                     payload: Dict[str, Any] = {
@@ -882,13 +934,13 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
                     }
                     if reply.get("reply_markup"):
                         payload["reply_markup"] = reply["reply_markup"]
-                    telegram_api("sendMessage", payload)
+                    telegram_api("sendMessage", payload, token=token)
                 if reply.get("qr_url") and data == "pay_qr":
                     telegram_api("sendPhoto", {
                         "chat_id": chat_id,
                         "photo": reply["qr_url"],
                         "caption": "📲 Quét mã QR để thanh toán nhanh"
-                    })
+                    }, token=token)
             return {"ok": True, "handled": "callback_query", "data": data}
 
         # Xử lý Tin nhắn văn bản (Message)
@@ -909,7 +961,7 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
         users_mod.track_user(str(from_user.get("id", chat_id)), full_name,
                              from_user.get("username", ""),
                              db.get_user_lang(str(from_user.get("id", chat_id))) or "")
-        _enrich_username(str(from_user.get("id", chat_id)))
+        _enrich_username(str(from_user.get("id", chat_id)), token)
         logger.info(f"Incoming [{chat_type}] from {full_name} ({chat_id}): {text}")
 
         reply = generate_bot_reply(
@@ -917,7 +969,8 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
             chat_type=chat_type,
             user_id=str(from_user.get("id", chat_id)),
             username=from_user.get("username", ""),
-            full_name=full_name
+            full_name=full_name,
+            token=token
         )
 
         if not reply.get("responded"):
@@ -932,11 +985,11 @@ def process_telegram_update(update: Dict[str, Any]) -> Dict[str, Any]:
         if reply.get("reply_markup"):
             send_payload["reply_markup"] = reply["reply_markup"]
 
-        res = telegram_api("sendMessage", send_payload)
+        res = telegram_api("sendMessage", send_payload, token=token)
         if not res.get("ok"):
             # Fallback nếu Markdown có ký tự đặc biệt chưa đóng
             send_payload.pop("parse_mode", None)
-            res = telegram_api("sendMessage", send_payload)
+            res = telegram_api("sendMessage", send_payload, token=token)
 
         return {"ok": True, "handled": "message", "telegram_response": res}
 
@@ -1008,6 +1061,50 @@ def telegram_webhook():
     return jsonify(result)
 
 
+@app.route("/webhook/<bot_id>", methods=["POST", "GET"])
+def telegram_webhook_for_bot(bot_id: str):
+    """
+    Webhook riêng cho từng bot: Telegram setWebhook về
+    https://bot-tele-2026.vercel.app/webhook/<bot_id>.
+
+    Token trả lời tin nhắn lấy từ biến môi trường có TÊN ghi trong bảng bots
+    (cột token_env, vd BOT_TOKEN_TRADEMRBIT) — giá trị token không nằm
+    trong DB. Bot nào chưa có token env thì webhook chỉ trả 200 và ghi log
+    (không xử lý tin nhắn). Bot chính (token_env BOT_TOKEN) giữ nguyên
+    hành vi cũ khi token_env trống.
+    """
+    bot = db.get_bot_by_id(bot_id)
+    if not bot:
+        return jsonify({"ok": False, "error": f"Khong co bot '{bot_id}' trong danh sach quan ly."}), 404
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "status": "Webhook endpoint is active (HTTPS ready)",
+            "bot_id": bot_id,
+            "username": bot.get("username", ""),
+            "message": "Telegram gửi POST request tới địa chỉ này để truyền dữ liệu tin nhắn."
+        })
+
+    secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+    if secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token", "") != secret:
+        return jsonify({"ok": False, "error": "Invalid webhook secret"}), 403
+
+    legacy_username = _legacy_bot_username()
+    is_legacy = bool(legacy_username) and str(bot.get("username", "")).lower() == legacy_username
+    token_env = str(bot.get("token_env", "") or "").strip()
+    token = os.getenv(token_env, "").strip() if token_env else ""
+    if not token and not is_legacy:
+        logger.info(f"Webhook /{bot_id} (@{bot.get('username', '')}): bot chua co token env — bo qua tin nhan, tra 200.")
+        return jsonify({"ok": True, "handled": "bot_chua_co_token_env",
+                        "message": "Bot nay chua co token trong bien moi truong nen web khong tra loi tin nhan. Dat ten bien token (cot token_env) trong tab Bots roi them gia tri token vao Vercel env."})
+    if not token:
+        token = None  # -> telegram_api dung BOT_TOKEN mac dinh (bot chinh)
+
+    update = request.get_json(silent=True) or {}
+    result = process_telegram_update(update, token=token)
+    return jsonify(result)
+
+
 # ============================================================================
 # HỆ THỐNG API TỰ ĐỘNG HÓA 9 BƯỚC (9-STEP AUTO BOT BUILDER SYSTEM)
 # ============================================================================
@@ -1076,20 +1173,7 @@ def api_step1_verify():
     POLLING_STATE["bot_info"] = bot_info
 
     # Tự động đăng ký Menu lệnh cho Bot
-    commands = [
-        {"command": "start", "description": "Menu chính NexusPilot Pro"},
-        {"command": "tin_hieu", "description": "Tín hiệu đạt chuẩn gần nhất"},
-        {"command": "engines", "description": "Giới thiệu 3 engine tín hiệu"},
-        {"command": "risk", "description": "Quy tắc quản trị rủi ro"},
-        {"command": "cockpit", "description": "Mở web cockpit NexusPilot"},
-        {"command": "tin_moi", "description": "Tin kinh tế mới nhất (24h)"},
-        {"command": "tin_sap_ra", "description": "Lịch kinh tế 7 ngày tới"},
-        {"command": "tin_da_ra", "description": "Tin kinh tế đã ra 7 ngày qua"},
-        {"command": "faq", "description": "Câu hỏi thường gặp (VI / EN / RU)"},
-        {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"},
-        {"command": "help", "description": "Danh sách lệnh của bot"}
-    ]
-    telegram_api("setMyCommands", {"commands": commands}, token=token)
+    telegram_api("setMyCommands", {"commands": BOT_COMMANDS}, token=token)
     logger.info(f"Connected to Telegram Bot @{bot_info.get('username')} (ID: {bot_info.get('id')})")
 
     return jsonify({
@@ -1436,9 +1520,11 @@ def api_step8_group():
 @app.route("/api/signal-relay", methods=["POST"])
 def api_signal_relay():
     """
-    Cau noi Cockpit NexusPilot -> Telegram: nhan tin hieu dat chuan va phat
-    toi SIGNAL_CHAT_ID (hoac CHAT_ID). Bao ve bang header X-Signal-Key
-    (bien SIGNAL_KEY), KHONG dung ADMIN_KEY. Loc nguong diem + chong trung.
+    Cau noi tin hieu -> Telegram: nhan tin hieu dat chuan va phat toi chat
+    dich (coin: chat_id trong bang bots; forex: SIGNAL_CHAT_ID hoac CHAT_ID).
+    Bao ve bang header X-Signal-Key (bien SIGNAL_KEY), KHONG dung ADMIN_KEY.
+    Loc nguong diem + chong trung theo loai tin hieu (coin 70/60 phut,
+    forex 80/30 phut). Tin coin gui bang token cua bot coin (token_env).
     """
     if not signal_relay.signal_key():
         return jsonify({"ok": False, "message": "Chua cau hinh SIGNAL_KEY phia server."}), 503
@@ -1450,27 +1536,43 @@ def api_signal_relay():
         return jsonify({"ok": False, "message": err}), 400
     is_demo = bool(sig.get("demo"))
     score = sig.get("score")
-    # Demo thiet ke (co X-Signal-Key hop le): bo qua nguong 80 + chong trung,
+    is_coin = signal_relay.is_coin_signal(sig)
+    threshold = signal_relay.min_score_for(sig)
+    # Demo thiet ke (co X-Signal-Key hop le): bo qua nguong + chong trung,
     # nhung van gan nhan TEST ro rang va khong hien trong /tin_hieu.
-    if not is_demo and score is not None and score < signal_relay.min_score():
+    if not is_demo and score is not None and score < threshold:
         signal_relay.record_signal(sig, sent=False, reason="below_threshold")
         return jsonify({"ok": True, "sent": False, "reason": "below_threshold",
-                        "min_score": signal_relay.min_score()})
+                        "min_score": threshold})
     dup = None if is_demo else signal_relay.find_duplicate(sig)
     if dup:
         signal_relay.record_signal(sig, sent=False, reason="duplicate")
         return jsonify({"ok": True, "sent": False, "reason": "duplicate",
                         "first_received_at": dup.get("_received_at")})
-    chat_id = signal_relay.destination_chat_id()
+    # Chat + token theo loai tin hieu: coin -> bang bots (chat_id + token_env);
+    # forex -> SIGNAL_CHAT_ID/CHAT_ID + BOT_TOKEN mac dinh.
+    token = None
+    if is_coin:
+        chat_id = signal_relay.destination_chat_id_for(sig)
+        token = signal_relay.coin_token() or None
+    else:
+        chat_id = signal_relay.destination_chat_id()
     if not chat_id:
         return jsonify({"ok": False,
                         "message": "Chua cau hinh SIGNAL_CHAT_ID hoac CHAT_ID de nhan tin hieu."}), 503
+    if is_coin and not token:
+        return jsonify({"ok": False,
+                        "message": "Chua cau hinh token bot coin (bien moi truong ghi trong cot token_env cua bot coin)."}), 503
     text = signal_relay.format_signal_message(sig)
     keyboard = signal_relay.signal_keyboard(sig)
     png = None
     candles = sig.get("candles") or []
     if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
         candles = chart_mod.fetch_btc_candles()
+    if len(candles) < 5 and is_coin:
+        # Tram da lay nen Binance kem payload; neu khong co (loi mang phia
+        # tram) thi Flask thu lay lai — van loi thi gui tin khong chart.
+        candles = chart_mod.fetch_coin_candles(sig.get("symbol", ""))
     if len(candles) >= 5:
         png = chart_mod.draw_chart(
             candles,
@@ -1484,32 +1586,46 @@ def api_signal_relay():
             res = telegram_api("sendPhoto", {
                 "chat_id": chat_id, "caption": text, "parse_mode": "Markdown",
                 "reply_markup": keyboard,
-            }, files={"photo": ("chart.png", png, "image/png")})
+            }, token=token, files={"photo": ("chart.png", png, "image/png")})
         else:
             short = text.split("\n```")[0]
             res = telegram_api("sendPhoto", {
                 "chat_id": chat_id, "caption": short, "parse_mode": "Markdown",
-            }, files={"photo": ("chart.png", png, "image/png")})
+            }, token=token, files={"photo": ("chart.png", png, "image/png")})
             if res.get("ok"):
                 res = telegram_api("sendMessage", {
                     "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
                     "reply_markup": keyboard,
-                })
+                }, token=token)
     else:
         res = telegram_api("sendMessage", {
             "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
             "reply_markup": keyboard,
-        })
+        }, token=token)
     if not res.get("ok"):
         # Fallback khong Markdown neu dinh dang gay loi
         res = telegram_api("sendMessage", {
             "chat_id": chat_id, "text": text, "reply_markup": keyboard,
-        })
+        }, token=token)
     if not res.get("ok"):
         return jsonify({"ok": False,
                         "message": f"Telegram tu choi: {res.get('description', 'loi khong ro')}"}), 502
+    # Tin coin: gui them the chi tiet (nhu khi bam Charts o tin forex).
+    # Best-effort: the gui loi cung khong anh huong tin chinh da gui.
+    if is_coin:
+        try:
+            card = chart_mod.draw_detail_card(sig, sig.get("score_breakdown") or [])
+            if card:
+                detail = signal_relay.detail_view(sig)
+                if len(detail) > 1024:
+                    detail = detail[:1000] + "…"
+                telegram_api("sendPhoto", {
+                    "chat_id": chat_id, "caption": detail, "parse_mode": "Markdown",
+                }, token=token, files={"photo": ("detail.png", card, "image/png")})
+        except Exception as e:
+            logger.warning(f"Gui the chi tiet coin that bai (tin chinh da gui): {e}")
     signal_relay.record_signal(sig, sent=True)
-    logger.info(f"Signal relayed: {sig['symbol']} {sig['direction']} score={score}")
+    logger.info(f"Signal relayed: {sig['symbol']} {sig['direction']} score={score} coin={is_coin}")
     return jsonify({"ok": True, "sent": True, "chat_id": chat_id})
 
 
@@ -1536,6 +1652,144 @@ def api_users_enrich():
         after = users_mod.get_user(u["chat_id"]) or {}
         (enriched if after.get("username") else still_missing).append(u["chat_id"])
     return jsonify({"ok": True, "enriched": enriched, "still_missing": still_missing})
+
+
+# --- QUẢN LÝ NHIỀU BOT (BOTS) — chỉ tên/cài đặt, KHÔNG lưu token ---
+# Token của từng bot chỉ nằm trong GitHub Secrets (sender) hoặc biến môi
+# trường Vercel (bot chính). Web không lưu token ở bất cứ đâu: không cột
+# token trong DB, không ghi token vào file hay log.
+BOT_KINDS = ("coin", "forex", "sales", "khac")
+
+
+def _clean_bot_input(data):
+    """Chuẩn hóa + kiểm tra field bot. Trả (dict đã chuẩn hóa, None) hoặc (None, lỗi)."""
+    out = {}
+    name = str(data.get("name", "") or "").strip()
+    if not name:
+        return None, "Tên bot không được để trống."
+    if len(name) > 80:
+        return None, "Tên bot tối đa 80 ký tự."
+    out["name"] = name
+    username = str(data.get("username", "") or "").strip().lstrip("@").lower()
+    if not username:
+        return None, "Username bot không được để trống."
+    if not username.endswith("bot"):
+        return None, "Username bot phải kết thúc bằng 'bot' (ví dụ: trademrbit_bot)."
+    if len(username) < 5 or len(username) > 32 or not all(c.isalnum() or c == "_" for c in username):
+        return None, "Username bot chỉ gồm chữ, số, gạch dưới, dài 5–32 ký tự."
+    out["username"] = username
+    kind = str(data.get("kind", "khac") or "khac").strip().lower()
+    out["kind"] = kind if kind in BOT_KINDS else "khac"
+    chat_id = str(data.get("chat_id", "") or "").strip()
+    if chat_id and not chat_id.isdigit():
+        return None, "Chat ID chỉ gồm chữ số (ví dụ: 5753439659)."
+    out["chat_id"] = chat_id
+    out["enabled"] = bool(data.get("enabled", True))
+    out["notes"] = str(data.get("notes", "") or "").strip()[:500]
+    token_env = str(data.get("token_env", "") or "").strip()
+    if token_env and (len(token_env) > 64 or not all(c.isupper() or c.isdigit() or c == "_" for c in token_env)):
+        return None, "Token env chỉ gồm chữ HOA, số, gạch dưới (vd: BOT_TOKEN_TRADEMRBIT)."
+    out["token_env"] = token_env
+    raw_id = str(data.get("id", "") or "").strip().lower()
+    slug_src = raw_id or username
+    out["id"] = "".join(c if c.isalnum() or c == "_" else "_" for c in slug_src).strip("_")
+    if not out["id"]:
+        return None, "Không tạo được id cho bot."
+    return out, None
+
+
+@app.route("/api/bots", methods=["GET"])
+def api_bots_list():
+    """Danh sách bot (kèm username bot env để Dashboard đánh dấu bot chính)."""
+    return jsonify({"ok": True, "bots": db.get_bots(), "env_bot_username": _legacy_bot_username()})
+
+
+@app.route("/api/bots", methods=["POST"])
+def api_bots_create():
+    data = request.get_json(silent=True) or {}
+    bot, err = _clean_bot_input(data)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    if db.get_bot_by_id(bot["id"]):
+        return jsonify({"ok": False, "message": f"Bot id '{bot['id']}' đã có trong danh sách."}), 400
+    saved = db.upsert_bot(bot)
+    logger.info(f"Da them bot @{saved.get('username')} (kind={saved.get('kind')})")
+    return jsonify({"ok": True, "bot": saved, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>", methods=["POST"])
+def api_bots_update(bot_id):
+    existing = db.get_bot_by_id(bot_id)
+    if not existing:
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    data = request.get_json(silent=True) or {}
+    merged = dict(existing)
+    for field in ("name", "username", "kind", "chat_id", "enabled", "notes", "token_env"):
+        if field in data:
+            merged[field] = data[field]
+    merged["id"] = bot_id  # id không đổi khi sửa
+    bot, err = _clean_bot_input(merged)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    saved = db.upsert_bot(bot)
+    logger.info(f"Da cap nhat bot @{saved.get('username')} (enabled={saved.get('enabled')})")
+    return jsonify({"ok": True, "bot": saved, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>", methods=["DELETE"])
+def api_bots_delete(bot_id):
+    if not db.get_bot_by_id(bot_id):
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    db.delete_bot(bot_id)
+    logger.info(f"Da xoa bot '{bot_id}' khoi danh sach quan ly")
+    return jsonify({"ok": True, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>/verify", methods=["POST"])
+def api_bots_verify(bot_id):
+    """Xác thực bot bằng token dùng 1 lần: getMe + cài menu lệnh + setWebhook.
+    Token chỉ nằm trong body request, KHÔNG lưu, KHÔNG ghi log."""
+    bot = db.get_bot_by_id(bot_id)
+    if not bot:
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    if not token or ":" not in token:
+        return jsonify({"ok": False, "message": "Định dạng token chưa hợp lệ (dạng 1234567890:AAH7bX9k...)."}), 400
+    me = telegram_api("getMe", token=token)
+    if not me.get("ok"):
+        return jsonify({"ok": False, "message": f"Telegram từ chối token: {me.get('description', 'Token không hợp lệ')}"}), 400
+    info = me.get("result", {})
+    telegram_api("setMyCommands", {"commands": BOT_COMMANDS}, token=token)
+    webhook_url = f"{_app_base_url()}/webhook/{bot_id}"
+    set_payload: Dict[str, Any] = {"url": webhook_url, "drop_pending_updates": False}
+    wh_secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+    if wh_secret:
+        set_payload["secret_token"] = wh_secret
+    set_res = telegram_api("setWebhook", set_payload, token=token)
+    wh_info = telegram_api("getWebhookInfo", token=token)
+    # Cập nhật tên/username theo Telegram (nguồn chính xác nhất).
+    updated = db.upsert_bot({
+        "id": bot_id,
+        "name": info.get("first_name") or bot.get("name"),
+        "username": (info.get("username") or bot.get("username", "")).lower(),
+        "kind": bot.get("kind", "khac"),
+        "chat_id": bot.get("chat_id", ""),
+        "enabled": bot.get("enabled", True),
+        "notes": bot.get("notes", ""),
+    })
+    logger.info(f"Da xac thuc bot @{updated.get('username')} (token {mask_secret(token)}) — webhook: {webhook_url}")
+    webhook_ok = bool(set_res.get("ok"))
+    return jsonify({
+        "ok": True,
+        "bot": updated,
+        "bot_info": {"id": info.get("id"), "username": info.get("username"), "first_name": info.get("first_name")},
+        "webhook_url": webhook_url,
+        "webhook_set": webhook_ok,
+        "webhook_info": wh_info.get("result", {}) if wh_info.get("ok") else {},
+        "token_tail": mask_secret(token),
+        "message": f"Đã xác thực @{info.get('username')} và gắn webhook {webhook_url}." if webhook_ok else f"Đã xác thực @{info.get('username')} nhưng gắn webhook thất bại: {set_res.get('description', 'lỗi không rõ')}",
+    })
 
 
 @app.route("/api/step9/simulate", methods=["POST"])

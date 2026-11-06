@@ -107,3 +107,38 @@ DO $$ BEGIN
     CREATE POLICY "Allow all access bot_messages" ON public.bot_messages FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- 8. Bảng bots — quản lý nhiều bot Telegram (KHÔNG lưu token).
+-- Token của từng bot chỉ nằm trong GitHub Secrets hoặc biến môi trường
+-- Vercel; bảng này chỉ giữ tên, username, loại, chat_id, bật/tắt.
+-- RLS bật và KHÔNG có policy công khai: chỉ service_role mới đọc/ghi.
+CREATE TABLE IF NOT EXISTS public.bots (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'khac' CHECK (kind IN ('coin', 'forex', 'sales', 'khac')),
+    chat_id TEXT NOT NULL DEFAULT '',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT NOT NULL DEFAULT '',
+    token_env TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Nếu bảng đã tạo từ trước (chưa có cột token_env), thêm cột sau.
+ALTER TABLE public.bots ADD COLUMN IF NOT EXISTS token_env TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.bots (id, name, username, kind, chat_id, enabled, notes, token_env) VALUES
+  ('trademrbit', 'Trade.Mrbit', 'trademrbit_bot', 'coin', '5753439659', TRUE, 'Bot báo tín hiệu coin Trade.2026 — token nằm trong biến môi trường Vercel BOT_TOKEN_TRADEMRBIT', 'BOT_TOKEN_TRADEMRBIT'),
+  ('nexuspilot90', 'NexusPilot', 'Nexuspilot90_bot', 'forex', '5753439659', TRUE, 'Bot tín hiệu Forex/vàng từ Cockpit MT5 — token nằm trong biến môi trường Vercel BOT_TOKEN', 'BOT_TOKEN')
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  username = EXCLUDED.username,
+  kind = EXCLUDED.kind,
+  chat_id = EXCLUDED.chat_id,
+  enabled = EXCLUDED.enabled,
+  notes = EXCLUDED.notes,
+  token_env = EXCLUDED.token_env,
+  updated_at = NOW();

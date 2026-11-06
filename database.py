@@ -1,10 +1,11 @@
 """
 BƯỚC 2 & BƯỚC 3: database.py - Kết nối và quản lý dữ liệu tập trung (Supabase & Local Fallback)
-Quản lý 4 phân hệ dữ liệu chính theo cấu trúc Bước 3:
+Quản lý 5 phân hệ dữ liệu chính theo cấu trúc Bước 3:
 1. Sản phẩm (products)
 2. Bảng giá (pricing)
 3. Câu hỏi FAQ đa ngôn ngữ VI/EN/RU (faqs)
 4. Khách hàng (customers)
+5. Bot Telegram (bots) — chỉ tên/username/loại/chat_id/bật-tắt, KHÔNG lưu token
 """
 
 import os
@@ -181,6 +182,32 @@ DEFAULT_DATABASE: Dict[str, Any] = {
             "created_at": "2026-10-24T10:17:00"
         }
     ],
+    "bots": [
+        {
+            "id": "trademrbit",
+            "name": "Trade.Mrbit",
+            "username": "trademrbit_bot",
+            "kind": "coin",
+            "chat_id": "5753439659",
+            "enabled": True,
+            "notes": "Bot báo tín hiệu coin Trade.2026 — token nằm trong biến môi trường Vercel BOT_TOKEN_TRADEMRBIT",
+            "token_env": "BOT_TOKEN_TRADEMRBIT",
+            "created_at": "2026-11-06T12:54:00",
+            "updated_at": "2026-11-06T12:54:00"
+        },
+        {
+            "id": "nexuspilot90",
+            "name": "NexusPilot",
+            "username": "Nexuspilot90_bot",
+            "kind": "forex",
+            "chat_id": "5753439659",
+            "enabled": True,
+            "notes": "Bot tín hiệu Forex/vàng từ Cockpit MT5 — token nằm trong biến môi trường Vercel",
+            "token_env": "BOT_TOKEN",
+            "created_at": "2026-10-24T00:00:00",
+            "updated_at": "2026-10-24T00:00:00"
+        }
+    ],
     "settings": {
         "shop_name": "NexusPilot Pro",
         "shop_url": "https://mt5-mrbit-2026-v2.onrender.com/",
@@ -326,7 +353,8 @@ class DatabaseManager:
             "products": len(local_data.get("products", [])),
             "pricing": len(local_data.get("pricing", [])),
             "faqs": len(local_data.get("faqs", [])),
-            "customers": len(local_data.get("customers", []))
+            "customers": len(local_data.get("customers", [])),
+            "bots": len(local_data.get("bots", []))
         }
 
         if not self.is_supabase_configured:
@@ -496,6 +524,70 @@ class DatabaseManager:
         self._invalidate_cache("customers")
         return record
 
+    # --- 5. BOT TELEGRAM (BOTS) — quản lý nhiều bot, KHÔNG lưu token ---
+    # Token của từng bot chỉ nằm trong GitHub Secrets hoặc biến môi trường
+    # Vercel; bảng này chỉ giữ tên, username, loại, chat_id, bật/tắt.
+    BOT_KINDS = ("coin", "forex", "sales", "khac")
+
+    def get_bots(self) -> List[Dict[str, Any]]:
+        remote = self._remote_list("bots")
+        if isinstance(remote, list) and len(remote) > 0:
+            return remote
+        return self.load_local_db().get("bots", [])
+
+    def get_bot_by_id(self, bot_id: str) -> Optional[Dict[str, Any]]:
+        for b in self.get_bots():
+            if str(b.get("id")) == str(bot_id):
+                return b
+        return None
+
+    def upsert_bot(self, bot: Dict[str, Any]) -> Dict[str, Any]:
+        """Thêm/cập nhật 1 bot. Tự sinh id slug từ username nếu chưa có."""
+        db = self.load_local_db()
+        bots = db.get("bots", [])
+        now_iso = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        if not bot.get("id"):
+            uname = str(bot.get("username", "")).strip().lower().lstrip("@")
+            slug = "".join(c if c.isalnum() else "_" for c in uname).strip("_")
+            bot["id"] = slug or f"bot_{int(time.time())}"
+        if bot.get("kind") not in self.BOT_KINDS:
+            bot["kind"] = "khac"
+        bot["username"] = str(bot.get("username", "")).strip().lstrip("@")
+        bot["chat_id"] = str(bot.get("chat_id", "")).strip()
+        bot["enabled"] = bool(bot.get("enabled", True))
+        bot["updated_at"] = now_iso
+        if not bot.get("created_at"):
+            bot["created_at"] = now_iso
+        updated = False
+        for i, b in enumerate(bots):
+            if str(b.get("id")) == str(bot["id"]):
+                merged = dict(b)
+                merged.update(bot)
+                bots[i] = merged
+                bot = merged
+                updated = True
+                break
+        if not updated:
+            bots.append(bot)
+        db["bots"] = bots
+        self.save_local_db(db)
+        self._supabase_request("bots", "POST", payload=bot, prefer="resolution=merge-duplicates,return=representation")
+        self._invalidate_cache("bots")
+        return bot
+
+    def delete_bot(self, bot_id: str) -> bool:
+        """Xóa 1 bot khỏi danh sách. Trả True nếu đã xóa."""
+        db = self.load_local_db()
+        bots = db.get("bots", [])
+        kept = [b for b in bots if str(b.get("id")) != str(bot_id)]
+        if len(kept) == len(bots):
+            return False
+        db["bots"] = kept
+        self.save_local_db(db)
+        self._supabase_request("bots", "DELETE", query_params={"id": f"eq.{bot_id}"})
+        self._invalidate_cache("bots")
+        return True
+
     # --- SETTINGS ---
     def get_settings(self) -> Dict[str, Any]:
         db = self.load_local_db()
@@ -559,12 +651,12 @@ class DatabaseManager:
         return ok
 
     def seed_supabase_from_local(self) -> Dict[str, Any]:
-        """Đẩy toàn bộ dữ liệu mẫu từ Local lên 4 bảng Supabase."""
+        """Đẩy toàn bộ dữ liệu mẫu từ Local lên 5 bảng Supabase."""
         if not self.is_supabase_configured:
             return {"ok": False, "message": "Chưa cấu hình SUPABASE_URL và SUPABASE_KEY."}
         db = self.load_local_db()
         results = {}
-        for table in ["products", "pricing", "faqs", "customers"]:
+        for table in ["products", "pricing", "faqs", "customers", "bots"]:
             rows = db.get(table, [])
             res = self._supabase_request(table, "POST", payload=rows)
             results[table] = len(rows) if res is not None else "Lỗi (Kiểm tra đã chạy SQL tạo bảng chưa)"
@@ -682,6 +774,41 @@ DO $$ BEGIN
     CREATE POLICY "Allow all access bot_messages" ON public.bot_messages FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- 8. Bảng bots — quản lý nhiều bot Telegram (KHÔNG lưu token).
+-- Token của từng bot chỉ nằm trong GitHub Secrets hoặc biến môi trường
+-- Vercel; bảng này chỉ giữ tên, username, loại, chat_id, bật/tắt.
+-- RLS bật và KHÔNG có policy công khai: chỉ service_role mới đọc/ghi.
+CREATE TABLE IF NOT EXISTS public.bots (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'khac' CHECK (kind IN ('coin', 'forex', 'sales', 'khac')),
+    chat_id TEXT NOT NULL DEFAULT '',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT NOT NULL DEFAULT '',
+    token_env TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Nếu bảng đã tạo từ trước (chưa có cột token_env), thêm cột sau.
+ALTER TABLE public.bots ADD COLUMN IF NOT EXISTS token_env TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.bots (id, name, username, kind, chat_id, enabled, notes, token_env) VALUES
+  ('trademrbit', 'Trade.Mrbit', 'trademrbit_bot', 'coin', '5753439659', TRUE, 'Bot báo tín hiệu coin Trade.2026 — token nằm trong biến môi trường Vercel BOT_TOKEN_TRADEMRBIT', 'BOT_TOKEN_TRADEMRBIT'),
+  ('nexuspilot90', 'NexusPilot', 'Nexuspilot90_bot', 'forex', '5753439659', TRUE, 'Bot tín hiệu Forex/vàng từ Cockpit MT5 — token nằm trong biến môi trường Vercel BOT_TOKEN', 'BOT_TOKEN')
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  username = EXCLUDED.username,
+  kind = EXCLUDED.kind,
+  chat_id = EXCLUDED.chat_id,
+  enabled = EXCLUDED.enabled,
+  notes = EXCLUDED.notes,
+  token_env = EXCLUDED.token_env,
+  updated_at = NOW();
 """
     try:
         with open(SCHEMA_SQL_FILE, "w", encoding="utf-8") as f:
