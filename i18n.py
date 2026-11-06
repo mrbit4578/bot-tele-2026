@@ -255,11 +255,153 @@ STRINGS = {
     },
 }
 
+# Chuỗi riêng cho bot coin Trade.2026 (kind="coin"). Chỉ ghi đè những khóa
+# khác với bot Forex NexusPilot; khóa nào không có ở đây thì t() dùng lại
+# chuỗi Forex cùng ngôn ngữ (vd nút Tin kinh tế, Xóa nhật ký...).
+STRINGS_COIN = {
+    "VI": {
+        "welcome": (
+            "Xin chào! 👋\n"
+            "Tôi là bot tín hiệu coin **Trade.2026** — trạm 24/7 quét 12 coin "
+            "(BTC, ETH, SOL, BNB, DOGE, DYDX, WIF, OP, RUNE, INJ, SUI, XAUT).\n\n"
+            "📡 Tôi tự động gửi tín hiệu coin đạt chuẩn (điểm từ 70/100, giai "
+            "đoạn alert_ready hoặc retest_in_progress) ngay khi trạm phát hiện.\n"
+            "Gõ /tin_hieu để xem tín hiệu coin gần nhất, hoặc chọn mục bên dưới:"
+        ),
+        "greet": "👋 Chào {name}, đây là bot tín hiệu coin **Trade.2026**.",
+        "btn_signal": "📡 Tín hiệu coin mới nhất >",
+        "btn_engines": "🧠 Engine coin Trade.2026 >",
+        "btn_risk": "🛡 Quản trị rủi ro coin >",
+        "btn_products": "📈 Top coin theo dõi >",
+        "btn_faq": "📋 FAQ Trade.2026",
+        "btn_cockpit": "🖥 Mở Trade.2026",
+        "help": (
+            "📖 **CÁC LỆNH CỦA BOT COIN:**\n"
+            "/start — Menu chính\n"
+            "/tin_hieu — Tín hiệu coin gần nhất\n"
+            "/engines — Giới thiệu engine coin 5 bước\n"
+            "/risk — Quy tắc quản trị rủi ro coin\n"
+            "/trade2026 — Mở web Trade.2026\n"
+            "/tin_moi — Tin kinh tế mới nhất (24h)\n"
+            "/tin_sap_ra — Lịch kinh tế 7 ngày tới\n"
+            "/tin_da_ra — Tin kinh tế đã ra 7 ngày qua\n"
+            "/faq — Câu hỏi thường gặp về bot coin\n"
+            "/support — Gặp tư vấn viên"
+        ),
+        "menu_prompt": "Bạn muốn xem mục nào?",
+        "cockpit_label": "🖥 **Trade.2026 — Phân tích & tín hiệu Crypto:**",
+    },
+    "EN": {
+        "welcome": (
+            "Hello! 👋\n"
+            "I am the **Trade.2026** coin signal bot — a 24/7 station scanning "
+            "12 coins (BTC, ETH, SOL, BNB, DOGE, DYDX, WIF, OP, RUNE, INJ, SUI, XAUT).\n\n"
+            "📡 I automatically send qualified coin signals (score 70/100 or above, "
+            "phase alert_ready or retest_in_progress) as soon as the station detects them.\n"
+            "Type /tin_hieu to see the latest coin signal, or pick a section below:"
+        ),
+        "greet": "👋 Hi {name}, this is the **Trade.2026** coin signal bot.",
+        "btn_signal": "📡 Latest coin signal >",
+        "btn_engines": "🧠 Trade.2026 coin engine >",
+        "btn_risk": "🛡 Coin risk management >",
+        "btn_products": "📈 Top coins we follow >",
+        "btn_faq": "📋 Trade.2026 FAQ",
+        "btn_cockpit": "🖥 Open Trade.2026",
+        "help": (
+            "📖 **COIN BOT COMMANDS:**\n"
+            "/start — Main menu\n"
+            "/tin_hieu — Latest coin signal\n"
+            "/engines — About the 5-step coin engine\n"
+            "/risk — Coin risk management rules\n"
+            "/trade2026 — Open the Trade.2026 web\n"
+            "/tin_moi — Latest economic news (24h)\n"
+            "/tin_sap_ra — Economic calendar, next 7 days\n"
+            "/tin_da_ra — Economic news released, past 7 days\n"
+            "/faq — Frequently asked questions\n"
+            "/support — Talk to an advisor"
+        ),
+        "menu_prompt": "Which section would you like to see?",
+        "cockpit_label": "🖥 **Trade.2026 — Crypto analysis & signals:**",
+    },
+    "RU": {
+        "welcome": (
+            "Здравствуйте! 👋\n"
+            "Я — бот сигналов **Trade.2026** для криптовалют: станция 24/7 "
+            "отслеживает 12 монет (BTC, ETH, SOL, BNB, DOGE, DYDX, WIF, OP, RUNE, INJ, SUI, XAUT).\n\n"
+            "📡 Я автоматически отправляю сигналы, прошедшие отбор (оценка от 70/100, "
+            "этап alert_ready или retest_in_progress), как только станция их обнаруживает.\n"
+            "Введите /tin_hieu, чтобы увидеть последний сигнал, или выберите раздел ниже:"
+        ),
+        "greet": "👋 Здравствуйте, {name}! Это бот сигналов **Trade.2026** для криптовалют.",
+        "btn_signal": "📡 Последний сигнал по монетам >",
+        "btn_engines": "🧠 Движок Trade.2026 >",
+        "btn_risk": "🛡 Управление рисками >",
+        "btn_products": "📈 Отслеживаемые монеты >",
+        "btn_faq": "📋 FAQ Trade.2026",
+        "btn_cockpit": "🖥 Открыть Trade.2026",
+        "help": (
+            "📖 **КОМАНДЫ БОТА:**\n"
+            "/start — Главное меню\n"
+            "/tin_hieu — Последний сигнал по монетам\n"
+            "/engines — О 5-шаговом движке\n"
+            "/risk — Правила управления рисками\n"
+            "/trade2026 — Открыть веб Trade.2026\n"
+            "/tin_moi — Последние экономические новости (24 ч)\n"
+            "/tin_sap_ra — Экономический календарь на 7 дней\n"
+            "/tin_da_ra — Вышедшие экономические новости за 7 дней\n"
+            "/faq — Часто задаваемые вопросы\n"
+            "/support — Связаться с консультантом"
+        ),
+        "menu_prompt": "Какой раздел вас интересует?",
+        "cockpit_label": "🖥 **Trade.2026 — анализ и сигналы криптовалют:**",
+    },
+    "ZH": {
+        "welcome": (
+            "您好！👋\n"
+            "我是 **Trade.2026** 币种信号机器人：24/7 工作站扫描 12 个币种"
+            "（BTC、ETH、SOL、BNB、DOGE、DYDX、WIF、OP、RUNE、INJ、SUI、XAUT）。\n\n"
+            "📡 工作站一旦检测到达标币种信号（评分 70/100 及以上，阶段为 "
+            "alert_ready 或 retest_in_progress），我会自动发送。\n"
+            "输入 /tin_hieu 查看最近一次币种信号，或在下方选择："
+        ),
+        "greet": "👋 您好，{name}！我是 **Trade.2026** 币种信号机器人。",
+        "btn_signal": "📡 最新币种信号 >",
+        "btn_engines": "🧠 Trade.2026 币种引擎 >",
+        "btn_risk": "🛡 币种风险管理 >",
+        "btn_products": "📈 关注的币种 >",
+        "btn_faq": "📋 Trade.2026 常见问题",
+        "btn_cockpit": "🖥 打开 Trade.2026",
+        "help": (
+            "📖 **机器人命令：**\n"
+            "/start — 主菜单\n"
+            "/tin_hieu — 最近一次币种信号\n"
+            "/engines — 5 步币种引擎介绍\n"
+            "/risk — 币种风险管理规则\n"
+            "/trade2026 — 打开 Trade.2026 网站\n"
+            "/tin_moi — 最新财经新闻（24小时）\n"
+            "/tin_sap_ra — 未来 7 天财经日历\n"
+            "/tin_da_ra — 过去 7 天已发布财经新闻\n"
+            "/faq — 常见问题\n"
+            "/support — 联系顾问"
+        ),
+        "menu_prompt": "您想查看哪个部分？",
+        "cockpit_label": "🖥 **Trade.2026 — 加密货币分析与信号：**",
+    },
+}
+
 SUPPORTED = ("VI", "EN", "RU", "ZH")
 
 
-def t(lang: str, key: str) -> str:
-    """Lấy chuỗi theo ngôn ngữ, fallback về VI khi thiếu."""
+def t(lang: str, key: str, kind: str = "forex") -> str:
+    """Lấy chuỗi theo ngôn ngữ, fallback về VI khi thiếu.
+
+    kind="coin": ưu tiên chuỗi riêng của bot coin Trade.2026 (STRINGS_COIN),
+    thiếu khóa nào thì dùng lại chuỗi Forex cùng ngôn ngữ rồi mới về VI.
+    kind khác: hành vi cũ (chuỗi Forex NexusPilot, không đổi)."""
+    if (kind or "forex").strip().lower() == "coin":
+        coin_table = STRINGS_COIN.get(lang) or STRINGS_COIN["VI"]
+        if key in coin_table:
+            return coin_table[key]
     table = STRINGS.get(lang) or STRINGS["VI"]
     return table.get(key) or STRINGS["VI"][key]
 

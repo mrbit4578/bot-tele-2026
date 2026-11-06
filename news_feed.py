@@ -1,7 +1,7 @@
 """
-news_feed.py — Lịch kinh tế ForexFactory cho bot tín hiệu NexusPilot.
+news_feed.py — Lịch kinh tế ForexFactory cho bot tín hiệu (dùng chung cho bot Forex và bot coin).
 
-Nguồn dữ liệu (cùng kiến trúc với dự án NexusPilot của chủ bot):
+Nguồn dữ liệu (cùng kiến trúc với dự án của chủ bot):
 1. Upstream trực tiếp: https://nfs.faireconomy.media/ff_calendar_thisweek.json
 2. Dự phòng: kho cache trên nhánh `data` của repo GitHub dự án
    (research/ff-calendar/latest.json) — dùng khi upstream lỗi/429.
@@ -10,7 +10,7 @@ Giới hạn của nguồn (nói rõ trong tin nhắn gửi người dùng):
 - Feed chỉ có lịch TUẦN HIỆN TẠI (Chủ nhật → Thứ bảy). "7 ngày tới" và
   "7 ngày qua" hiển thị phần nằm trong tuần hiện tại và ghi chú rõ.
 - Feed KHÔNG có số "thực tế" (actual) sau khi tin ra — giống cột Thực tế
-  trên tab NEWS của Cockpit (đang để trống). Chỉ có dự báo & kỳ trước.
+  trên tab NEWS của web (đang để trống). Chỉ có dự báo & kỳ trước.
 
 Cache trong bộ nhớ 15 phút để tránh gọi upstream liên tục.
 """
@@ -91,7 +91,7 @@ def get_events(force: bool = False) -> Tuple[List[Dict[str, Any]], str]:
             if isinstance(raw, dict) and isinstance(raw.get("events"), list) and raw["events"]:
                 events = _normalize(raw["events"])
                 fetched = str(raw.get("fetchedAt", ""))[:10]
-                source = f"kho dự án NexusPilot (cập nhật {fetched})" if fetched else "kho dự án NexusPilot"
+                source = f"kho lịch kinh tế (cập nhật {fetched})" if fetched else "kho lịch kinh tế"
         except Exception:
             events = []
     if events:
@@ -162,7 +162,7 @@ def format_upcoming(now: Optional[datetime] = None) -> str:
     text = "📰 **LỊCH KINH TẾ SẮP RA — 7 NGÀY TỚI (tin mạnh & trung bình)**\n"
     text += _group_by_day(shown)
     if len(events) > MAX_EVENTS:
-        text += f"\n\n… và {len(events) - MAX_EVENTS} sự kiện nữa — xem đầy đủ ở tab NEWS trên Cockpit."
+        text += f"\n\n… và {len(events) - MAX_EVENTS} sự kiện nữa — xem đầy đủ tại trang ForexFactory."
     text += (f"\n\n📌 Nguồn: {source}. Lịch ForexFactory theo tuần hiện tại — "
              "phần vượt sang tuần sau sẽ có sau Chủ nhật.")
     return text
@@ -178,7 +178,7 @@ def format_past(now: Optional[datetime] = None) -> str:
     text = "📰 **TIN KINH TẾ ĐÃ RA — 7 NGÀY QUA (tin mạnh & trung bình)**\n"
     text += _group_by_day(shown, reverse=True)
     text += ("\n\n📌 Nguồn: " + source + ". Lưu ý: nguồn ForexFactory không kèm "
-             "số “thực tế” sau khi tin ra (giống cột Thực tế trên Cockpit) — "
+             "số “thực tế” sau khi tin ra (giống cột “Thực tế” trên trang ForexFactory) — "
              "tra số thực tế tại trang ForexFactory.")
     return text
 
