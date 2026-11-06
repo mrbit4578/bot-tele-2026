@@ -1,0 +1,1974 @@
+"""
+BƯỚC 2, 6, 7, 8, 9: main.py - Máy chủ Flask xử lý Telegram Bot & Hệ thống Auto Tạo Bot 9 Bước
+- Cung cấp route "/" ("Xin chào!"), "/webhook" (nhận tin nhắn từ Telegram HTTPS Webhook)
+- Tích hợp Chế độ Polling cục bộ để chạy thử Bot ngay lập tức mà chưa cần Deploy
+- Cung cấp Dashboard Web tương tác 9 Bước tại "/dashboard" để tự động hóa toàn bộ quy trình
+"""
+
+import os
+import sys
+import json
+import time
+import subprocess
+import threading
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, List, Optional
+
+import requests
+from flask import Flask, request, jsonify, render_template, send_from_directory
+from dotenv import load_dotenv
+
+from database import DatabaseManager, generate_supabase_sql
+from faq_engine import FAQEngine
+import signal_relay
+import news_feed
+import i18n
+import chart as chart_mod
+import users as users_mod
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+load_dotenv(ENV_PATH)
+
+# Vercel (serverless): filesystem chi-doc, khong co thread nen song lau.
+# -> Khong ghi file .env, khong chay Local Polling; chi dung Webhook + Supabase.
+IS_VERCEL = bool(os.getenv("VERCEL"))
+
+# Cấu hình Logging chuẩn theo Bước 9 (Render Logs)
+SYSTEM_LOGS: List[str] = []
+
+
+class MemoryLogHandler(logging.Handler):
+    def emit(self, record):
+        ts = datetime.now().strftime("%H:%M:%S")
+        msg = f"[{record.levelname}] {record.getMessage()}"
+        SYSTEM_LOGS.append(f"{ts} {msg}")
+        if len(SYSTEM_LOGS) > 200:
+            SYSTEM_LOGS.pop(0)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s"
+)
+logger = logging.getLogger("TelegramBot")
+logger.addHandler(MemoryLogHandler())
+
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
+
+
+def _admin_denied_response():
+    """Tra 401 JSON neu request API chua dat yeu cau ADMIN_KEY, nguoc lai tra None.
+
+    Bao ve theo tung endpoint (khong dua vao request.path vi Vercel rewrite
+    /(.*) -> /api/index lam duong dan Flask nhan duoc khong dang tin cay).
+    - Da dat ADMIN_KEY: bat buoc gui dung header X-Admin-Key.
+    - Tren Vercel chua dat ADMIN_KEY: chan (vi /api/state chua cau hinh nhay cam).
+    - Local chua dat khoa: mo nhu cu cho tien dung tren may nha.
+    """
+    admin_key = os.getenv("ADMIN_KEY", "").strip()
+    if admin_key:
+        # Cat khoang trang 2 dau o ca 2 phia: key dan tu clipboard hay dinh
+        # khoang trang/xuong dong thua -> truoc day so sanh that bai du key dung.
+        provided = (request.headers.get("X-Admin-Key", "") or request.cookies.get("admin_key", "")).strip()
+        if provided != admin_key:
+            return jsonify({"ok": False, "message": "Thieu hoac sai ADMIN_KEY. Nhap khoa quan tri de mo Dashboard."}), 401
+        return None
+    if IS_VERCEL:
+        return jsonify({"ok": False, "message": "Hay dat bien ADMIN_KEY trong Vercel Settings roi redeploy de mo khoa Dashboard."}), 401
+    return None
+
+
+@app.before_request
+def _protect_api():
+    # url_rule duoc Flask gan sau khi khop route theo duong dan goc cua request,
+    # dang tin cay hon request.path trong moi truong rewrite cua Vercel.
+    rule = request.url_rule
+    if rule is not None and rule.rule == "/api/signal-relay":
+        return None
+    if rule is not None and rule.rule.startswith("/api/"):
+        return _admin_denied_response()
+    return None
+
+
+db = DatabaseManager()
+faq_engine = FAQEngine(db)
+
+# Trạng thái Polling cục bộ (chạy thử không cần Webhook HTTPS)
+POLLING_STATE = {
+    "running": False,
+    "thread": None,
+    "last_update_id": 0,
+    "bot_info": None
+}
+
+# Ánh xạ 9 bức ảnh hướng dẫn gốc trong thư mục sang từng bước
+STEP_IMAGES = {
+    1: "857130286_1433641274769746_1960286195377603991_n.jpg",
+    2: "855927700_29105811135721037_8160912043294716999_n.jpg",
+    3: "857802977_3024155831250957_5995899367217284581_n.jpg",
+    4: "856282083_1175747125022063_1872286703002622442_n.jpg",
+    5: "855518536_1577919933619912_9016109783381997211_n.jpg",
+    6: "855449911_4509639802623652_2429886808130489623_n.jpg",
+    7: "858771343_1175983368327985_6184613730625311593_n.jpg",
+    8: "856716525_1875789223783045_3921254774766530744_n.jpg",
+    9: "857445656_1096799019796312_2314631996810367865_n.jpg"
+}
+
+
+def get_env_config() -> Dict[str, str]:
+    load_dotenv(ENV_PATH, override=True)
+    return {
+        "BOT_TOKEN": os.getenv("BOT_TOKEN", "").strip(),
+        "CHAT_ID": os.getenv("CHAT_ID", "").strip(),
+        "TIMEZONE": os.getenv("TIMEZONE", "Asia/Ho_Chi_Minh").strip(),
+        "SUPABASE_URL": os.getenv("SUPABASE_URL", "").strip(),
+        "SUPABASE_KEY": os.getenv("SUPABASE_KEY", "").strip(),
+        "WEBHOOK_URL": os.getenv("WEBHOOK_URL", "").strip(),
+        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", "").strip(),
+        "ADMIN_KEY": os.getenv("ADMIN_KEY", "").strip(),
+        "TELEGRAM_WEBHOOK_SECRET": os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip(),
+        "SIGNAL_KEY": os.getenv("SIGNAL_KEY", "").strip(),
+        "SIGNAL_CHAT_ID": os.getenv("SIGNAL_CHAT_ID", "").strip(),
+        "SIGNAL_MIN_SCORE": os.getenv("SIGNAL_MIN_SCORE", "80").strip()
+    }
+
+
+def mask_secret(value: str) -> str:
+    """Che gia tri nhay cam khi tra ve trinh duyet (chi giu 4 ky tu cuoi de nhan dien)."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if len(v) <= 4:
+        return "\u2022\u2022\u2022\u2022"
+    return "\u2022" * 6 + v[-4:]
+
+
+def save_env_config(updates: Dict[str, str]) -> Dict[str, str]:
+    current = get_env_config()
+    for k, v in updates.items():
+        if v is not None:
+            v = str(v).strip()
+            # Gia tri dang che (\u2022\u2022\u2022) tu /api/state gui lai = "giu nguyen gia tri cu",
+            # tuyet doi khong ghi de len token/key that.
+            if "\u2022" in v:
+                continue
+            current[k] = v
+            os.environ[k] = current[k]
+
+    lines = [
+        "# CẤU HÌNH HỆ THỐNG BOT TELEGRAM 9 BƯỚC",
+        f"BOT_TOKEN={current.get('BOT_TOKEN', '')}",
+        f"CHAT_ID={current.get('CHAT_ID', '')}",
+        f"TIMEZONE={current.get('TIMEZONE', 'Asia/Ho_Chi_Minh')}",
+        f"SUPABASE_URL={current.get('SUPABASE_URL', '')}",
+        f"SUPABASE_KEY={current.get('SUPABASE_KEY', '')}",
+        f"WEBHOOK_URL={current.get('WEBHOOK_URL', '')}",
+        f"GEMINI_API_KEY={current.get('GEMINI_API_KEY', '')}",
+        f"ADMIN_KEY={current.get('ADMIN_KEY', '')}",
+        f"TELEGRAM_WEBHOOK_SECRET={current.get('TELEGRAM_WEBHOOK_SECRET', '')}",
+        f"SIGNAL_KEY={current.get('SIGNAL_KEY', '')}",
+        f"SIGNAL_CHAT_ID={current.get('SIGNAL_CHAT_ID', '')}",
+        f"SIGNAL_MIN_SCORE={current.get('SIGNAL_MIN_SCORE', '80')}",
+        ""
+    ]
+    if IS_VERCEL:
+        # Khong ghi file tren Vercel: cau hinh ben vung phai dat trong
+        # Vercel Project Settings -> Environment Variables.
+        logger.warning("Vercel mode: chi cap nhat bien moi truong trong bo nho. Hay dat cac bien nay trong Vercel Settings de luu ben vung.")
+    else:
+        try:
+            with open(ENV_PATH, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception as e:
+            logger.error(f"Khong ghi duoc file .env: {e}")
+
+    # Cập nhật kết nối Supabase trong db
+    db.supabase_url = current.get("SUPABASE_URL", "").rstrip("/")
+    db.supabase_key = current.get("SUPABASE_KEY", "")
+    return current
+
+
+# ============================================================================
+# CÁC HÀM GIAO TIẾP TELEGRAM HTTP API (BƯỚC 1, 6, 7, 8, 9)
+# ============================================================================
+
+def telegram_api(method: str, payload: Optional[Dict[str, Any]] = None, token: Optional[str] = None, files: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    bot_token = (token or get_env_config().get("BOT_TOKEN", "")).strip()
+    if not bot_token or ":" not in bot_token:
+        return {"ok": False, "description": "Chưa cấu hình BOT_TOKEN hợp lệ."}
+
+    url = f"https://api.telegram.org/bot{bot_token}/{method}"
+    try:
+        if files:
+            data = {}
+            for k, v in (payload or {}).items():
+                data[k] = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v
+            resp = requests.post(url, data=data, files=files, timeout=30)
+        else:
+            resp = requests.post(url, json=payload or {}, timeout=10)
+        result = resp.json()
+        if method.startswith("send") and isinstance(result, dict) and result.get("ok"):
+            _msg = result.get("result") or {}
+            _cid = (payload or {}).get("chat_id")
+            if _cid and _msg.get("message_id"):
+                try:
+                    users_mod.track_bot_message(str(_cid), int(_msg["message_id"]))
+                except Exception:
+                    pass
+        return result
+    except Exception as e:
+        logger.error(f"Telegram API error ({method}): {e}")
+        return {"ok": False, "description": str(e)}
+
+
+# Menu lệnh chuẩn cài cho mọi bot (dùng chung cho Bước 1 và xác thực bot mới).
+BOT_COMMANDS = [
+    {"command": "start", "description": "Menu chính NexusPilot Pro"},
+    {"command": "tin_hieu", "description": "Tín hiệu đạt chuẩn gần nhất"},
+    {"command": "engines", "description": "Giới thiệu 3 engine tín hiệu"},
+    {"command": "risk", "description": "Quy tắc quản trị rủi ro"},
+    {"command": "cockpit", "description": "Mở web cockpit NexusPilot"},
+    {"command": "tin_moi", "description": "Tin kinh tế mới nhất (24h)"},
+    {"command": "tin_sap_ra", "description": "Lịch kinh tế 7 ngày tới"},
+    {"command": "tin_da_ra", "description": "Tin kinh tế đã ra 7 ngày qua"},
+    {"command": "faq", "description": "Câu hỏi thường gặp (VI / EN / RU)"},
+    {"command": "support", "description": "Gặp tư vấn viên hỗ trợ trực tiếp"},
+    {"command": "help", "description": "Danh sách lệnh của bot"}
+]
+
+# URL gốc của app (để đặt webhook riêng cho từng bot: <base>/webhook/<bot_id>).
+APP_BASE_URL_DEFAULT = "https://bot-tele-2026.vercel.app"
+
+
+def _app_base_url() -> str:
+    raw = (get_env_config().get("WEBHOOK_URL", "") or "").strip().rstrip("/")
+    if raw.startswith("https://"):
+        if raw.endswith("/webhook"):
+            raw = raw[:-8]
+        return raw
+    return APP_BASE_URL_DEFAULT
+
+
+# Username của bot env (bot chính, token nằm trong biến môi trường) — lấy
+# qua getMe 1 lần rồi cache lại, dùng để nhận diện bot nào được xử lý tin
+# nhắn ở /webhook/<bot_id>. Bot khác chưa có token env thì webhook chỉ
+# trả 200 và ghi log (không xử lý tin nhắn).
+_LEGACY_BOT_USERNAME: Optional[str] = None
+_LEGACY_BOT_CHECKED = False
+
+
+def _legacy_bot_username() -> str:
+    global _LEGACY_BOT_USERNAME, _LEGACY_BOT_CHECKED
+    if _LEGACY_BOT_CHECKED:
+        return _LEGACY_BOT_USERNAME or ""
+    _LEGACY_BOT_CHECKED = True
+    try:
+        me = telegram_api("getMe")
+        if me.get("ok"):
+            _LEGACY_BOT_USERNAME = str((me.get("result") or {}).get("username", "")).lower()
+    except Exception:
+        pass
+    return _LEGACY_BOT_USERNAME or ""
+
+
+ENGINES_TEXT = (
+    "🧠 **3 ENGINE TÍN HIỆU CỦA NEXUSPILOT PRO**\n\n"
+    "1️⃣ **SMC ICT Alpha** — Đọc cấu trúc thị trường kiểu ICT: Order Block, "
+    "Fair Value Gap (FVG), BOS/CHoCH và Liquidity Sweep.\n"
+    "2️⃣ **Trend Ribbon Pro** — Bám xu hướng bằng dải EMA 21/50/200 kết hợp "
+    "ATR, ưu tiên điểm vào khi giá hồi về vùng ribbon.\n"
+    "3️⃣ **Mean Reversion Sweep** — Bắt điểm đảo chiều khi giá quét cực trị: "
+    "Bollinger Bands + phân kỳ RSI.\n\n"
+    "Mỗi tín hiệu đều được chấm điểm minh bạch theo từng yếu tố. Chỉ tín hiệu "
+    "đạt ngưỡng chất lượng mới được bot phát tự động."
+)
+
+RISK_TEXT = (
+    "🛡 **QUY TẮC QUẢN TRỊ RỦI RO NEXUSPILOT PRO**\n\n"
+    "• Khối lượng tối đa **0.02 lot** cho lệnh do hệ thống gợi ý.\n"
+    "• Rủi ro mỗi lệnh khoảng **1% tài khoản** — luôn đặt Stop Loss.\n"
+    "• Chỉ phát tín hiệu có **điểm từ 80/100** và tối đa **3 vị thế** cùng lúc.\n"
+    "• Chốt lời chia 3 phần: **TP1 50% · TP2 30% · TP3 20%**, chạm TP1 thì "
+    "dời SL về điểm hòa vốn (Break-Even).\n"
+    "• Có **Daily Drawdown Guard**: chạm giới hạn lỗ ngày thì dừng, không gỡ gạc.\n"
+    "• Mặc định chạy **DRY_RUN / tài khoản paper** để kiểm chứng trước khi "
+    "dùng tiền thật.\n\n"
+    "⚠️ Mọi tín hiệu chỉ là tham khảo — không phải lời khuyên đầu tư."
+)
+
+
+def _reply_label(lang: str, key: str) -> str:
+    """Nhan nut ban phim co dinh (bo dau ' >' cua ban inline)."""
+    return i18n.t(lang, key).replace(" >", "")
+
+
+def build_reply_keyboard(lang: str = "VI") -> Dict[str, Any]:
+    """Ban phim tra loi co dinh kieu KIRO BOT: luoi 2 cot, luon hien duoi khung chat."""
+    return {
+        "keyboard": [
+            [{"text": _reply_label(lang, "btn_signal")}, {"text": _reply_label(lang, "btn_engines")}],
+            [{"text": _reply_label(lang, "btn_risk")}, {"text": _reply_label(lang, "btn_products")}],
+            [{"text": _reply_label(lang, "btn_news")}, {"text": _reply_label(lang, "btn_lang_short")}],
+            [{"text": _reply_label(lang, "btn_faq")}, {"text": _reply_label(lang, "btn_support_short")}],
+            [{"text": _reply_label(lang, "btn_cockpit")}],
+            [{"text": _reply_label(lang, "btn_delete")}],
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+        "is_persistent": True,
+    }
+
+
+def label_to_callback(text: str) -> Optional[str]:
+    """Anh xa nhan nut ban phim co dinh (ca 4 ngon ngu) sang callback tuong ung."""
+    mapping = {
+        "btn_signal": "menu_signal",
+        "btn_engines": "menu_engines",
+        "btn_risk": "menu_risk",
+        "btn_products": "menu_products",
+        "btn_news": "menu_news",
+        "btn_lang_short": "menu_faq_lang",
+        "btn_faq": "menu_faq",
+        "btn_support_short": "menu_human_support",
+        "btn_support": "menu_human_support",
+        "btn_cockpit": "cockpit_text",
+        "btn_delete": "delete_history",
+    }
+    for lang in i18n.SUPPORTED:
+        for key, cb in mapping.items():
+            if text == _reply_label(lang, key):
+                return cb
+    return None
+
+
+def build_inline_keyboard(menu_type: Optional[str], lang: str = "VI") -> Optional[Dict[str, Any]]:
+    """
+    Tạo bàn phím Inline Keyboard chuẩn theo Bước 7 và Bước 9.
+    """
+    if not menu_type:
+        return None
+
+    settings = db.get_settings()
+    shop_url = settings.get("shop_url", "https://shop.example.com")
+
+    if menu_type == "start_menu":
+        # Menu chinh NexusPilot Pro
+        return {
+            "inline_keyboard": [
+                [{"text": i18n.t(lang, "btn_signal").replace(" >", ""), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines").replace(" >", ""), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk").replace(" >", ""), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_news"), "callback_data": "menu_news"}],
+                [{"text": i18n.t(lang, "btn_cockpit"), "url": signal_relay.COCKPIT_URL}],
+                [{"text": i18n.t(lang, "btn_faq"), "callback_data": "menu_faq"},
+                 {"text": i18n.t(lang, "btn_support_short"), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+            ]
+        }
+
+    if menu_type == "news":
+        return {
+            "inline_keyboard": [
+                [{"text": i18n.t(lang, "btn_latest"), "callback_data": "news_latest"}],
+                [{"text": i18n.t(lang, "btn_upcoming"), "callback_data": "news_upcoming"}],
+                [{"text": i18n.t(lang, "btn_released"), "callback_data": "news_released"}],
+                [{"text": i18n.t(lang, "btn_menu"), "callback_data": "menu_consultant"}]
+            ]
+        }
+
+    if menu_type == "main_consultant":
+        # Menu dieu huong NexusPilot Pro
+        return {
+            "inline_keyboard": [
+                [{"text": i18n.t(lang, "btn_signal"), "callback_data": "menu_signal"}],
+                [{"text": i18n.t(lang, "btn_engines"), "callback_data": "menu_engines"}],
+                [{"text": i18n.t(lang, "btn_risk"), "callback_data": "menu_risk"}],
+                [{"text": i18n.t(lang, "btn_products"), "callback_data": "menu_products"}],
+                [{"text": i18n.t(lang, "btn_faq_lang"), "callback_data": "menu_faq_lang"}],
+                [{"text": i18n.t(lang, "btn_support"), "callback_data": "menu_human_support"}],
+                [{"text": i18n.t(lang, "btn_fanpage"), "url": settings.get("fanpage_url", "https://www.facebook.com/profile.php?id=61595736091847")}]
+            ]
+        }
+
+    if menu_type == "products":
+        # Bước 7.1: Danh sách chọn sản phẩm
+        buttons = []
+        for p in db.get_products():
+            buttons.append([{
+                "text": f"📦 {p.get('name')} >",
+                "callback_data": f"prod_{p.get('id')}"
+            }])
+        buttons.append([{"text": "🛒 Đặt hàng trên Website", "url": shop_url}])
+        buttons.append([{"text": "⬅️ Quay lại Menu chính", "callback_data": "menu_consultant"}])
+        return {"inline_keyboard": buttons}
+
+    if menu_type == "pricing":
+        # Bước 7.2: Xem bảng giá (Sản phẩm A >, Sản phẩm B >, Liên hệ tư vấn >)
+        buttons = []
+        for p in db.get_products()[:3]:
+            buttons.append([{
+                "text": f"{p.get('name')} >",
+                "callback_data": f"prod_{p.get('id')}"
+            }])
+        buttons.append([{"text": "💳 Thanh toán ngay >", "callback_data": "menu_payment"}])
+        buttons.append([{"text": "📞 Liên hệ tư vấn >", "callback_data": "menu_human_support"}])
+        buttons.append([{"text": "⬅️ Quay lại", "callback_data": "menu_consultant"}])
+        return {"inline_keyboard": buttons}
+
+    if menu_type == "payment":
+        # Bước 7.3: Thanh toán PayPal | USDT | QR Code
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "🅿️ PayPal", "callback_data": "pay_paypal"},
+                    {"text": "🪙 USDT (Crypto)", "callback_data": "pay_usdt"}
+                ],
+                [{"text": "📲 Nhận mã QR Thanh toán", "callback_data": "pay_qr"}],
+                [{"text": "⬅️ Quay lại", "callback_data": "menu_consultant"}]
+            ]
+        }
+
+    if menu_type == "faq_lang":
+        # Bước 7.4: FAQ đa ngôn ngữ (VI / EN / RU)
+        return {
+            "inline_keyboard": [
+                [{"text": "🇻🇳 VI — Hỗ trợ tiếng Việt >", "callback_data": "faq_lang_VI"}],
+                [{"text": "🇬🇧 EN — English support >", "callback_data": "faq_lang_EN"}],
+                [{"text": "🇷🇺 RU — Поддержка на русском >", "callback_data": "faq_lang_RU"}],
+                [{"text": "🇨🇳 ZH — 中文支持 >", "callback_data": "faq_lang_ZH"}],
+                [{"text": i18n.t(lang, "btn_back"), "callback_data": "menu_consultant"}]
+            ]
+        }
+
+    return None
+
+
+def generate_bot_reply(
+    text: str,
+    chat_type: str = "private",
+    user_id: str = "guest",
+    username: str = "",
+    full_name: str = "",
+    callback_data: Optional[str] = None,
+    token: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Xử lý toàn bộ logic phản hồi của Bot cho cả Tin nhắn văn bản & Nút bấm Callback.
+    Dùng chung cho cả Telegram Webhook thực tế và Trình giả lập (Simulator) ở Bước 9.
+    """
+    is_group = chat_type in ("group", "supergroup")
+    settings = db.get_settings()
+    support_user = settings.get("support_username", "@phucanhmrt")
+    shop_url = settings.get("shop_url", "https://shop.example.com")
+    # Ngon ngu da chon cua user (luu vinh vien qua Supabase user_prefs,
+    # du phong file local); mac dinh VI.
+    user_lang = i18n.normalize(db.get_user_lang(str(user_id)) or "VI")
+    # Bam nut ban phim co dinh -> chuyen thanh callback tuong ung
+    if not callback_data and text:
+        mapped = label_to_callback(text.strip())
+        if mapped:
+            callback_data = mapped
+
+    # 1. Xử lý khi người dùng bấm nút Inline (Callback Query)
+    if callback_data:
+        if callback_data == "delete_history":
+            if chat_type != "private":
+                return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
+            return {"responded": True, "text": i18n.t(user_lang, "delete_confirm"),
+                    "reply_markup": {"inline_keyboard": [
+                        [{"text": i18n.t(user_lang, "delete_yes"), "callback_data": "delete_history_confirm"}],
+                        [{"text": i18n.t(user_lang, "delete_no"), "callback_data": "delete_history_cancel"}],
+                    ]}}
+        if callback_data == "delete_history_cancel":
+            return {"responded": True, "text": i18n.t(user_lang, "delete_kept"),
+                    "reply_markup": build_reply_keyboard(user_lang)}
+        if callback_data == "delete_history_confirm":
+            if chat_type != "private":
+                return {"responded": True, "text": i18n.t(user_lang, "delete_private_only"), "reply_markup": None}
+            ids = users_mod.get_bot_message_ids(str(user_id))
+            ok_n = fail_n = 0
+            for mid in reversed(ids):
+                res = telegram_api("deleteMessage", {"chat_id": user_id, "message_id": mid}, token=token)
+                if res.get("ok"):
+                    ok_n += 1
+                else:
+                    fail_n += 1
+            users_mod.clear_bot_messages(str(user_id))
+            if ok_n and not fail_n:
+                text = i18n.t(user_lang, "delete_done").format(n=ok_n)
+            elif ok_n:
+                text = i18n.t(user_lang, "delete_done_partial").format(n=ok_n, m=fail_n)
+            else:
+                text = i18n.t(user_lang, "delete_done_none")
+            return {"responded": True, "text": text, "reply_markup": build_reply_keyboard(user_lang)}
+        if callback_data == "menu_news":
+            return {
+                "responded": True,
+                "text": "📰 **TIN KINH TẾ FOREXFACTORY**\nChọn khoảng thời gian anh muốn xem:",
+                "reply_markup": build_inline_keyboard("news", user_lang)
+            }
+        if callback_data == "news_latest":
+            return {
+                "responded": True,
+                "text": news_feed.format_latest(),
+                "reply_markup": build_inline_keyboard("news", user_lang)
+            }
+        if callback_data == "news_upcoming":
+            return {
+                "responded": True,
+                "text": news_feed.format_upcoming(),
+                "reply_markup": build_inline_keyboard("news", user_lang)
+            }
+        if callback_data == "news_released":
+            return {
+                "responded": True,
+                "text": news_feed.format_past(),
+                "reply_markup": build_inline_keyboard("news", user_lang)
+            }
+        if callback_data == "cockpit_text":
+            return {
+                "responded": True,
+                "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
+                "reply_markup": None
+            }
+        if callback_data == "signal_chart":
+            sent = signal_relay.recent_signals(limit=1, only_sent=True)
+            if not sent:
+                sent = signal_relay.recent_signals(limit=1, only_sent=True, include_demo=True)
+            if not sent:
+                return {"responded": True, "text": "📡 Chưa có tín hiệu nào được phát.", "reply_markup": None}
+            sig = sent[0]
+            import base64 as _b64
+            photos = []
+            card = chart_mod.draw_detail_card(sig, sig.get("score_breakdown") or [])
+            if card:
+                photos.append({"b64": _b64.b64encode(card).decode(),
+                               "caption": signal_relay.detail_view(sig)})
+            candles = sig.get("candles") or []
+            if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
+                candles = chart_mod.fetch_btc_candles()
+            if len(candles) >= 5:
+                png = chart_mod.draw_chart(
+                    candles,
+                    {"entry": sig.get("entry_price"), "stop_loss": sig.get("stop_loss"),
+                     "tp1": sig.get("tp1"), "tp2": sig.get("tp2"), "tp3": sig.get("tp3")},
+                    sig["symbol"], sig["direction"], "Chart chi tiết", height=720)
+                if png:
+                    photos.append({"b64": _b64.b64encode(png).decode(),
+                                   "caption": f"📊 Chart {sig['symbol']} {sig['timeframe']} — đường Entry/SL/TP"})
+            out: Dict[str, Any] = {
+                "responded": True,
+                "text": signal_relay.detail_view(sig),
+                "reply_markup": {"inline_keyboard": [[{"text": "💬 Chat", "url": "https://t.me/soledadhuong90"}]]},
+            }
+            if photos:
+                out["photos"] = photos
+            return out
+        if callback_data == "menu_signal":
+            return {
+                "responded": True,
+                "text": signal_relay.latest_signal_text(),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            }
+        if callback_data == "menu_engines":
+            return {
+                "responded": True,
+                "text": ENGINES_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            }
+        if callback_data == "menu_risk":
+            return {
+                "responded": True,
+                "text": RISK_TEXT,
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            }
+        if callback_data == "menu_faq":
+            return {
+                "responded": True,
+                "text": faq_engine.format_faq_by_language(user_lang),
+                "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+            }
+        if callback_data == "menu_faq_lang":
+            return {
+                "responded": True,
+                "text": i18n.t(user_lang, "lang_title"),
+                "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+            }
+        if callback_data.startswith("faq_lang_"):
+            lang = i18n.normalize(callback_data.replace("faq_lang_", ""))
+            db.set_user_lang(str(user_id), lang)
+            user_lang = lang
+            return {
+                "responded": True,
+                "text": i18n.t(lang, "lang_set") + "\n\n" + faq_engine.format_faq_by_language(lang),
+                "reply_markup": build_reply_keyboard(lang)
+            }
+        if callback_data == "menu_pricing":
+            return {
+                "responded": True,
+                "text": faq_engine.format_pricing_message(),
+                "reply_markup": build_inline_keyboard("pricing")
+            }
+        if callback_data == "menu_products":
+            return {
+                "responded": True,
+                "text": faq_engine.format_products_message(),
+                "reply_markup": build_inline_keyboard("products")
+            }
+        if callback_data.startswith("prod_"):
+            prod_id = callback_data.replace("prod_", "", 1)
+            prod = db.get_product_by_id(prod_id)
+            if prod:
+                feats = "\n".join([f"  ✓ {f}" for f in prod.get("features", [])])
+                stock_txt = "✅ Còn hàng" if prod.get("in_stock", True) else "❌ Hết hàng"
+                msg = (
+                    f"📦 **{prod.get('name')}**\n"
+                    f"• Danh mục: {prod.get('category', 'Sản phẩm')}\n"
+                    f"• Tình trạng: {stock_txt}\n"
+                    f"• Mô tả: {prod.get('description')}\n\n"
+                    f"**Đặc điểm nổi bật:**\n{feats}\n\n"
+                    f"🔗 Đặt mua ngay: {prod.get('order_url', shop_url)}"
+                )
+                return {
+                    "responded": True,
+                    "text": msg,
+                    "reply_markup": build_inline_keyboard("payment")
+                }
+        if callback_data == "menu_payment":
+            pay = faq_engine.format_payment_message("ALL")
+            return {
+                "responded": True,
+                "text": pay["text"],
+                "qr_url": pay["qr_url"],
+                "reply_markup": build_inline_keyboard("payment")
+            }
+        if callback_data == "pay_paypal":
+            pay = faq_engine.format_payment_message("PAYPAL")
+            return {
+                "responded": True,
+                "text": pay["text"],
+                "reply_markup": build_inline_keyboard("payment")
+            }
+        if callback_data == "pay_usdt":
+            pay = faq_engine.format_payment_message("USDT")
+            return {
+                "responded": True,
+                "text": pay["text"],
+                "reply_markup": build_inline_keyboard("payment")
+            }
+        if callback_data == "pay_qr":
+            pay = faq_engine.format_payment_message("ALL")
+            return {
+                "responded": True,
+                "text": "📲 **MÃ QR THANH TOÁN NHANH:**\nQuét mã QR bên dưới hoặc chuyển khoản theo thông tin:\n\n" + pay["text"],
+                "qr_url": pay["qr_url"],
+                "reply_markup": build_inline_keyboard("payment")
+            }
+        if callback_data == "menu_human_support":
+            return {
+                "responded": True,
+                "text": (
+                    f"{i18n.t(user_lang, 'support_title')}\n\n"
+                    f"• {i18n.t(user_lang, 'support_advisor')}: {support_user}\n"
+                    f"• {i18n.t(user_lang, 'support_site')}: {shop_url}\n"
+                    f"• {i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}\n"
+                    f"• {i18n.t(user_lang, 'support_note')}"
+                ),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            }
+        if callback_data == "menu_consultant":
+            return {
+                "responded": True,
+                "text": i18n.t(user_lang, "menu_prompt"),
+                "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+            }
+
+    # 2. Nếu ở trong Nhóm (Bước 8), kiểm tra bộ lọc Keyword & Chống Spam trước
+    bot_uname = ""
+    if POLLING_STATE.get("bot_info"):
+        bot_uname = POLLING_STATE["bot_info"].get("username", "")
+
+    if is_group:
+        should_reply, reason = faq_engine.should_respond_in_group(text, user_id, bot_uname)
+        if not should_reply:
+            return {
+                "responded": False,
+                "reason": reason,
+                "text": None
+            }
+
+    clean_text = (text or "").strip()
+    cmd = clean_text.split()[0].lower().split("@")[0] if clean_text.startswith("/") else ""
+
+    # Lưu lịch sử tương tác khách hàng vào bảng customers (Bước 3)
+    db.log_customer_interaction(
+        telegram_id=user_id,
+        username=username,
+        full_name=full_name,
+        message=clean_text,
+        language=faq_engine.detect_language(clean_text)
+    )
+
+    # 3. Xử lý các lệnh chuẩn (/start, /ship, /faq, /price, /products, /pay, /support, /lang)
+    if cmd == "/start":
+        return {
+            "responded": True,
+            "text": (
+                (i18n.t(user_lang, "greet").format(name=full_name) + "\n"
+                 + i18n.t(user_lang, "welcome").split("\n", 1)[1])
+                if full_name else i18n.t(user_lang, "welcome")
+            ),
+            "reply_markup": build_reply_keyboard(user_lang)
+        }
+
+    if cmd in ("/tin_hieu", "/signal", "/tinhieu"):
+        return {
+            "responded": True,
+            "text": signal_relay.latest_signal_text(),
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+        }
+
+    if cmd in ("/tin_moi", "/tin", "/news"):
+        return {
+            "responded": True,
+            "text": news_feed.format_latest(),
+            "reply_markup": build_inline_keyboard("news", user_lang)
+        }
+
+    if cmd in ("/tin_sap_ra", "/lich_sap_ra"):
+        return {
+            "responded": True,
+            "text": news_feed.format_upcoming(),
+            "reply_markup": build_inline_keyboard("news", user_lang)
+        }
+
+    if cmd in ("/tin_da_ra", "/lich_da_ra"):
+        return {
+            "responded": True,
+            "text": news_feed.format_past(),
+            "reply_markup": build_inline_keyboard("news", user_lang)
+        }
+
+    if cmd == "/engines":
+        return {
+            "responded": True,
+            "text": ENGINES_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+        }
+
+    if cmd == "/risk":
+        return {
+            "responded": True,
+            "text": RISK_TEXT,
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+        }
+
+    if cmd == "/cockpit":
+        return {
+            "responded": True,
+            "text": f"{i18n.t(user_lang, 'cockpit_label')}\n{signal_relay.COCKPIT_URL}",
+            "reply_markup": build_inline_keyboard("start_menu", user_lang)
+        }
+
+    if cmd == "/help":
+        return {
+            "responded": True,
+            "text": i18n.t(user_lang, "help"),
+            "reply_markup": build_inline_keyboard("start_menu", user_lang)
+        }
+
+    if cmd == "/ship":
+        # Chuẩn Bước 8: Tra cứu phí giao hàng
+        return {
+            "responded": True,
+            "text": faq_engine.format_shipping_info(),
+            "reply_markup": None if is_group else build_inline_keyboard("main_consultant", user_lang)
+        }
+
+    if cmd == "/faq":
+        return {
+            "responded": True,
+            "text": faq_engine.format_faq_by_language(user_lang),
+            "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+        }
+
+    if cmd == "/price":
+        return {
+            "responded": True,
+            "text": faq_engine.format_pricing_message(),
+            "reply_markup": build_inline_keyboard("pricing")
+        }
+
+    if cmd == "/products":
+        return {
+            "responded": True,
+            "text": faq_engine.format_products_message(),
+            "reply_markup": build_inline_keyboard("products")
+        }
+
+    if cmd == "/pay":
+        pay = faq_engine.format_payment_message("ALL")
+        return {
+            "responded": True,
+            "text": pay["text"],
+            "qr_url": pay["qr_url"],
+            "reply_markup": build_inline_keyboard("payment")
+        }
+
+    if cmd == "/lang":
+        return {
+            "responded": True,
+            "text": i18n.t(user_lang, "lang_title"),
+            "reply_markup": build_inline_keyboard("faq_lang", user_lang)
+        }
+
+    if cmd == "/support":
+        return {
+            "responded": True,
+            "text": (f"{i18n.t(user_lang, 'support_short')}: {support_user}\n"
+                    f"{i18n.t(user_lang, 'support_or')}: {shop_url}\n"
+                    f"{i18n.t(user_lang, 'support_fanpage')}: {settings.get('fanpage_url', 'https://www.facebook.com/profile.php?id=61595736091847')}"),
+            "reply_markup": build_inline_keyboard("main_consultant", user_lang)
+        }
+
+    # 4. Xử lý câu hỏi tự nhiên qua FAQ Engine & AI Consultant (Bước 7 & Bước 8)
+    ai_res = faq_engine.generate_ai_response(clean_text, is_group=is_group, pref_lang=user_lang)
+    return {
+        "responded": True,
+        "text": ai_res.get("text"),
+        "qr_url": ai_res.get("qr_url"),
+        "reply_markup": build_inline_keyboard(ai_res.get("menu_type"), user_lang)
+    }
+
+
+def _enrich_username(user_id: str, token: str | None = None) -> None:
+    """Nếu user chưa có username trên bản ghi, hỏi Telegram getChat để lấy.
+    Chỉ thử lại sau 24h (chống gọi API lặp cho acc vốn không đặt username)."""
+    try:
+        if (users_mod.get_user(user_id) or {}).get("username"):
+            return
+        local = users_mod.get_local_user(user_id)
+        try:
+            last = datetime.fromisoformat(local.get("_username_checked_at", ""))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last < timedelta(hours=24):
+                return
+        except (ValueError, TypeError):
+            pass
+        users_mod.mark_username_checked(user_id)
+        res = telegram_api("getChat", {"chat_id": user_id}, token=token)
+        if res.get("ok"):
+            r = res.get("result") or {}
+            uname = r.get("username", "")
+            fname = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+            if uname:
+                users_mod.track_user(user_id, fname, uname, "",
+                                     count_interaction=False)
+    except Exception:
+        pass
+
+
+def process_telegram_update(update: Dict[str, Any], token: Optional[str] = None) -> Dict[str, Any]:
+    """
+    BƯỚC 6: Nhận dữ liệu từ Telegram Webhook (hoặc Polling), xử lý và gửi phản hồi.
+    """
+    try:
+        # Xử lý Callback Query (khi khách bấm nút Inline)
+        if "callback_query" in update:
+            cb = update["callback_query"]
+            cb_id = cb.get("id")
+            data = cb.get("data", "")
+            msg = cb.get("message", {})
+            chat = msg.get("chat", {})
+            chat_id = chat.get("id")
+            chat_type = chat.get("type", "private")
+            from_user = cb.get("from", {})
+
+            users_mod.track_user(str(from_user.get("id", chat_id)),
+                                 f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
+                                 from_user.get("username", ""),
+                                 db.get_user_lang(str(from_user.get("id", chat_id))) or "")
+            _enrich_username(str(from_user.get("id", chat_id)), token)
+            telegram_api("answerCallbackQuery", {"callback_query_id": cb_id}, token=token)
+
+            reply = generate_bot_reply(
+                text="",
+                chat_type=chat_type,
+                user_id=str(from_user.get("id", chat_id)),
+                username=from_user.get("username", ""),
+                full_name=f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
+                callback_data=data,
+                token=token
+            )
+            if reply.get("responded") and reply.get("text"):
+                if reply.get("photos"):
+                    for _i, _ph in enumerate(reply["photos"]):
+                        import base64 as _b64
+                        _pb: Dict[str, Any] = {
+                            "chat_id": chat_id, "caption": _ph.get("caption") or reply["text"],
+                            "parse_mode": "Markdown",
+                        }
+                        if _i == 0 and reply.get("reply_markup"):
+                            _pb["reply_markup"] = reply["reply_markup"]
+                        telegram_api("sendPhoto", _pb, token=token,
+                                     files={"photo": ("chart.png", _b64.b64decode(_ph["b64"]), "image/png")})
+                elif reply.get("photo_b64"):
+                    import base64 as _b64
+                    png_bytes = _b64.b64decode(reply["photo_b64"])
+                    photo_payload: Dict[str, Any] = {
+                        "chat_id": chat_id, "caption": reply["text"],
+                        "parse_mode": "Markdown",
+                    }
+                    if reply.get("reply_markup"):
+                        photo_payload["reply_markup"] = reply["reply_markup"]
+                    telegram_api("sendPhoto", photo_payload, token=token,
+                                 files={"photo": ("chart.png", png_bytes, "image/png")})
+                else:
+                    payload: Dict[str, Any] = {
+                        "chat_id": chat_id,
+                        "text": reply["text"],
+                        "parse_mode": "Markdown"
+                    }
+                    if reply.get("reply_markup"):
+                        payload["reply_markup"] = reply["reply_markup"]
+                    telegram_api("sendMessage", payload, token=token)
+                if reply.get("qr_url") and data == "pay_qr":
+                    telegram_api("sendPhoto", {
+                        "chat_id": chat_id,
+                        "photo": reply["qr_url"],
+                        "caption": "📲 Quét mã QR để thanh toán nhanh"
+                    }, token=token)
+            return {"ok": True, "handled": "callback_query", "data": data}
+
+        # Xử lý Tin nhắn văn bản (Message)
+        message = update.get("message") or update.get("edited_message")
+        if not message:
+            return {"ok": True, "handled": "ignored_non_message"}
+
+        chat = message.get("chat", {})
+        chat_id = chat.get("id")
+        chat_type = chat.get("type", "private")
+        text = message.get("text", "")
+        from_user = message.get("from", {})
+
+        if not text:
+            return {"ok": True, "handled": "non_text_message"}
+
+        full_name = f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip()
+        users_mod.track_user(str(from_user.get("id", chat_id)), full_name,
+                             from_user.get("username", ""),
+                             db.get_user_lang(str(from_user.get("id", chat_id))) or "")
+        _enrich_username(str(from_user.get("id", chat_id)), token)
+        logger.info(f"Incoming [{chat_type}] from {full_name} ({chat_id}): {text}")
+
+        reply = generate_bot_reply(
+            text=text,
+            chat_type=chat_type,
+            user_id=str(from_user.get("id", chat_id)),
+            username=from_user.get("username", ""),
+            full_name=full_name,
+            token=token
+        )
+
+        if not reply.get("responded"):
+            logger.info(f"Ignored group message ({reply.get('reason')}): {text}")
+            return {"ok": True, "handled": "filtered_group_message", "reason": reply.get("reason")}
+
+        send_payload: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": reply["text"],
+            "parse_mode": "Markdown"
+        }
+        if reply.get("reply_markup"):
+            send_payload["reply_markup"] = reply["reply_markup"]
+
+        res = telegram_api("sendMessage", send_payload, token=token)
+        if not res.get("ok"):
+            # Fallback nếu Markdown có ký tự đặc biệt chưa đóng
+            send_payload.pop("parse_mode", None)
+            res = telegram_api("sendMessage", send_payload, token=token)
+
+        return {"ok": True, "handled": "message", "telegram_response": res}
+
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================================
+# ROUTES CHÍNH CỦA BOT (BƯỚC 2 & BƯỚC 6)
+# ============================================================================
+
+@app.route("/")
+def home():
+    """
+    Route gốc theo đúng mã nguồn mẫu ở Bước 2:
+    @app.route("/")
+    def home():
+        return "Xin chào!"
+    Nếu người dùng mở bằng trình duyệt, hỗ trợ chuyển nhanh vào Dashboard 9 Bước.
+    """
+    if request.args.get("view") == "dashboard":
+        return render_template("dashboard.html", step_images=STEP_IMAGES)
+    accept = request.headers.get("Accept", "")
+    if "text/html" in accept and request.args.get("raw") != "1":
+        return render_template("dashboard.html", step_images=STEP_IMAGES)
+    return "Xin chào!"
+
+
+@app.route("/ping")
+def ping():
+    return "Xin chào!"
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Giao diện Hệ Thống Auto Tạo Bot Telegram 9 Bước."""
+    return render_template("dashboard.html", step_images=STEP_IMAGES)
+
+
+@app.route("/images/<path:filename>")
+def serve_step_image(filename: str):
+    """Phục vụ 9 bức ảnh hướng dẫn gốc trong thư mục (neu co)."""
+    fpath = os.path.join(BASE_DIR, filename)
+    if not os.path.isfile(fpath):
+        return jsonify({"ok": False, "message": "Anh minh hoa chua duoc dua vao repo."}), 404
+    return send_from_directory(BASE_DIR, filename)
+
+
+@app.route("/webhook", methods=["POST", "GET"])
+def telegram_webhook():
+    """
+    BƯỚC 6: KẾT NỐI TELEGRAM WEBHOOK
+    Telegram gửi tin nhắn -> Webhook chuyển dữ liệu -> Bot xử lý và phản hồi
+    """
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "status": "Webhook endpoint is active (HTTPS ready)",
+            "message": "Telegram gửi POST request tới địa chỉ này để truyền dữ liệu tin nhắn."
+        })
+
+    secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+    if secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token", "") != secret:
+        return jsonify({"ok": False, "error": "Invalid webhook secret"}), 403
+
+    update = request.get_json(silent=True) or {}
+    result = process_telegram_update(update)
+    return jsonify(result)
+
+
+@app.route("/webhook/<bot_id>", methods=["POST", "GET"])
+def telegram_webhook_for_bot(bot_id: str):
+    """
+    Webhook riêng cho từng bot: Telegram setWebhook về
+    https://bot-tele-2026.vercel.app/webhook/<bot_id>.
+
+    Token trả lời tin nhắn lấy từ biến môi trường có TÊN ghi trong bảng bots
+    (cột token_env, vd BOT_TOKEN_TRADEMRBIT) — giá trị token không nằm
+    trong DB. Bot nào chưa có token env thì webhook chỉ trả 200 và ghi log
+    (không xử lý tin nhắn). Bot chính (token_env BOT_TOKEN) giữ nguyên
+    hành vi cũ khi token_env trống.
+    """
+    bot = db.get_bot_by_id(bot_id)
+    if not bot:
+        return jsonify({"ok": False, "error": f"Khong co bot '{bot_id}' trong danh sach quan ly."}), 404
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "status": "Webhook endpoint is active (HTTPS ready)",
+            "bot_id": bot_id,
+            "username": bot.get("username", ""),
+            "message": "Telegram gửi POST request tới địa chỉ này để truyền dữ liệu tin nhắn."
+        })
+
+    secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+    if secret and request.headers.get("X-Telegram-Bot-Api-Secret-Token", "") != secret:
+        return jsonify({"ok": False, "error": "Invalid webhook secret"}), 403
+
+    legacy_username = _legacy_bot_username()
+    is_legacy = bool(legacy_username) and str(bot.get("username", "")).lower() == legacy_username
+    token_env = str(bot.get("token_env", "") or "").strip()
+    token = os.getenv(token_env, "").strip() if token_env else ""
+    if not token and not is_legacy:
+        logger.info(f"Webhook /{bot_id} (@{bot.get('username', '')}): bot chua co token env — bo qua tin nhan, tra 200.")
+        return jsonify({"ok": True, "handled": "bot_chua_co_token_env",
+                        "message": "Bot nay chua co token trong bien moi truong nen web khong tra loi tin nhan. Dat ten bien token (cot token_env) trong tab Bots roi them gia tri token vao Vercel env."})
+    if not token:
+        token = None  # -> telegram_api dung BOT_TOKEN mac dinh (bot chinh)
+
+    update = request.get_json(silent=True) or {}
+    result = process_telegram_update(update, token=token)
+    return jsonify(result)
+
+
+# ============================================================================
+# HỆ THỐNG API TỰ ĐỘNG HÓA 9 BƯỚC (9-STEP AUTO BOT BUILDER SYSTEM)
+# ============================================================================
+
+@app.route("/api/state", methods=["GET"])
+def api_get_state():
+    """Lấy trạng thái tổng thể của cả 9 bước."""
+    env = get_env_config()
+    db_status = db.test_connection()
+    settings = db.get_settings()
+    return jsonify({
+        "ok": True,
+        "env": {
+            "BOT_TOKEN": mask_secret(env["BOT_TOKEN"]),
+            "CHAT_ID": env["CHAT_ID"],
+            "TIMEZONE": env["TIMEZONE"],
+            "SUPABASE_URL": env["SUPABASE_URL"],
+            "SUPABASE_KEY": mask_secret(env["SUPABASE_KEY"]),
+            "WEBHOOK_URL": env["WEBHOOK_URL"],
+            "GEMINI_API_KEY": mask_secret(env["GEMINI_API_KEY"]),
+            "SIGNAL_KEY": mask_secret(env.get("SIGNAL_KEY", "")),
+            "SIGNAL_CHAT_ID": env.get("SIGNAL_CHAT_ID", ""),
+            "SIGNAL_MIN_SCORE": env.get("SIGNAL_MIN_SCORE", "80")
+        },
+        "database": {
+            "status": db_status,
+            "products": db.get_products(),
+            "pricing": db.get_pricing(),
+            "faqs": db.get_faqs(),
+            "customers": db.get_customers(),
+            "settings": settings
+        },
+        "polling": {
+            "running": POLLING_STATE["running"],
+            "bot_info": POLLING_STATE["bot_info"]
+        },
+        "step_images": STEP_IMAGES,
+        "logs": SYSTEM_LOGS[-40:]
+    })
+
+
+# --- BƯỚC 1: TẠO BOT TRÊN TELEGRAM & XÁC THỰC TOKEN ---
+@app.route("/api/step1/verify", methods=["POST"])
+def api_step1_verify():
+    data = request.get_json(silent=True) or {}
+    token = (data.get("BOT_TOKEN") or get_env_config().get("BOT_TOKEN", "")).strip()
+    chat_id = (data.get("CHAT_ID") or get_env_config().get("CHAT_ID", "")).strip()
+    timezone = (data.get("TIMEZONE") or get_env_config().get("TIMEZONE", "Asia/Ho_Chi_Minh")).strip()
+
+    save_env_config({"BOT_TOKEN": token, "CHAT_ID": chat_id, "TIMEZONE": timezone})
+
+    if not token or ":" not in token:
+        return jsonify({
+            "ok": False,
+            "message": "Định dạng BOT_TOKEN chưa hợp lệ (Ví dụ: 1234567890:AAH7bX9k...ZyR2vQmT)."
+        })
+
+    me = telegram_api("getMe", token=token)
+    if not me.get("ok"):
+        return jsonify({
+            "ok": False,
+            "message": f"Telegram từ chối Token: {me.get('description', 'Token không hợp lệ')}"
+        })
+
+    bot_info = me.get("result", {})
+    POLLING_STATE["bot_info"] = bot_info
+
+    # Tự động đăng ký Menu lệnh cho Bot
+    telegram_api("setMyCommands", {"commands": BOT_COMMANDS}, token=token)
+    logger.info(f"Connected to Telegram Bot @{bot_info.get('username')} (ID: {bot_info.get('id')})")
+
+    return jsonify({
+        "ok": True,
+        "message": f"Kết nối thành công với Bot @{bot_info.get('username')} ({bot_info.get('first_name')})!",
+        "bot_info": bot_info
+    })
+
+
+# --- BƯỚC 2: KIỂM TRA & SINH MÃ NGUỒN PYTHON ---
+@app.route("/api/step2/files", methods=["GET", "POST"])
+def api_step2_files():
+    target_files = ["main.py", "faq_engine.py", "database.py", "requirements.txt", "render.yaml", "Procfile"]
+    files_info = []
+    for fname in target_files:
+        fpath = os.path.join(BASE_DIR, fname)
+        exists = os.path.exists(fpath)
+        size = os.path.getsize(fpath) if exists else 0
+        preview = ""
+        if exists:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                preview = f.read(3000)
+        files_info.append({
+            "name": fname,
+            "exists": exists,
+            "size": size,
+            "preview": preview
+        })
+    logger.info("Checked Python source code files (main.py, faq_engine.py, database.py, requirements.txt)")
+    return jsonify({"ok": True, "files": files_info})
+
+
+# --- BƯỚC 3: THIẾT LẬP SUPABASE & QUẢN LÝ 4 BẢNG DỮ LIỆU ---
+@app.route("/api/step3/supabase", methods=["POST"])
+def api_step3_supabase():
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "status")
+
+    if action == "save_credentials":
+        save_env_config({
+            "SUPABASE_URL": data.get("SUPABASE_URL", ""),
+            "SUPABASE_KEY": data.get("SUPABASE_KEY", "")
+        })
+        status = db.test_connection()
+        return jsonify({"ok": True, "status": status, "sql": generate_supabase_sql()})
+
+    if action == "seed":
+        res = db.seed_supabase_from_local()
+        return jsonify(res)
+
+    if action == "add_product":
+        item = db.upsert_product(data.get("item", {}))
+        return jsonify({"ok": True, "item": item, "products": db.get_products()})
+
+    if action == "add_pricing":
+        item = db.upsert_pricing(data.get("item", {}))
+        return jsonify({"ok": True, "item": item, "pricing": db.get_pricing()})
+
+    if action == "add_faq":
+        item = db.upsert_faq(data.get("item", {}))
+        return jsonify({"ok": True, "item": item, "faqs": db.get_faqs()})
+
+    return jsonify({
+        "ok": True,
+        "status": db.test_connection(),
+        "sql": generate_supabase_sql()
+    })
+
+
+# --- BƯỚC 4: ĐƯA CODE LÊN GITHUB (AUTO GIT INIT / COMMIT / PUSH) ---
+@app.route("/api/step4/git", methods=["POST"])
+def api_step4_git():
+    data = request.get_json(silent=True) or {}
+    repo_url = (data.get("repo_url") or "").strip()
+    commit_msg = (data.get("commit_msg") or "Cập nhật mã nguồn").strip()
+    branch = (data.get("branch") or "main").strip()
+    github_token = (data.get("github_token") or "").strip()
+    repo_name = (data.get("repo_name") or "telegram-ai-bot").strip()
+    is_private = bool(data.get("is_private", True))
+
+    if IS_VERCEL:
+        return jsonify({
+            "ok": False,
+            "message": "Buoc 4 (git init/commit/push) chi chay tren may local. Tren Vercel, code duoc deploy tu dong tu GitHub moi lan push."
+        })
+
+    steps_log = []
+
+    def run_git(args: List[str]) -> Dict[str, Any]:
+        try:
+            proc = subprocess.run(
+                ["git"] + args,
+                cwd=BASE_DIR,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20
+            )
+            out = (proc.stdout or "") + (proc.stderr or "")
+            return {"ok": proc.returncode == 0, "cmd": "git " + " ".join(args), "output": out.strip()}
+        except Exception as e:
+            return {"ok": False, "cmd": "git " + " ".join(args), "output": str(e)}
+
+    # 1. Nếu có GitHub Personal Access Token và chưa có repo_url -> Tự tạo Private Repository trên GitHub
+    if github_token and not repo_url:
+        try:
+            headers = {
+                "Authorization": f"token {github_token}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            r = requests.post(
+                "https://api.github.com/user/repos",
+                headers=headers,
+                json={"name": repo_name, "private": is_private, "auto_init": False},
+                timeout=10
+            )
+            if r.status_code in (200, 201):
+                repo_data = r.json()
+                repo_url = repo_data.get("clone_url", "")
+                steps_log.append({
+                    "ok": True,
+                    "cmd": "GitHub API: Create Private Repository",
+                    "output": f"Đã tạo repository: {repo_data.get('html_url')}"
+                })
+            else:
+                steps_log.append({
+                    "ok": False,
+                    "cmd": "GitHub API: Create Repository",
+                    "output": r.text
+                })
+        except Exception as e:
+            steps_log.append({"ok": False, "cmd": "GitHub API", "output": str(e)})
+
+    # 2. Khởi tạo Git nếu chưa có
+    if not os.path.exists(os.path.join(BASE_DIR, ".git")):
+        steps_log.append(run_git(["init"]))
+
+    steps_log.append(run_git(["branch", "-M", branch]))
+    steps_log.append(run_git(["add", "."]))
+    steps_log.append(run_git(["commit", "-m", commit_msg]))
+
+    if repo_url:
+        # Cài đặt remote origin
+        run_git(["remote", "remove", "origin"])
+        auth_url = repo_url
+        if github_token and repo_url.startswith("https://github.com/"):
+            auth_url = repo_url.replace("https://github.com/", f"https://{github_token}@github.com/")
+        steps_log.append(run_git(["remote", "add", "origin", auth_url]))
+        push_res = run_git(["push", "-u", "origin", branch])
+        steps_log.append(push_res)
+
+    # Che GitHub token trong moi log tra ve (token tung nam trong URL remote)
+    if github_token:
+        for st in steps_log:
+            if isinstance(st.get("cmd"), str):
+                st["cmd"] = st["cmd"].replace(github_token, "***")
+            if isinstance(st.get("output"), str):
+                st["output"] = st["output"].replace(github_token, "***")
+
+    logger.info("Executed Step 4 Git automation commands")
+    return jsonify({
+        "ok": True,
+        "repo_url": repo_url,
+        "steps": steps_log
+    })
+
+
+# --- BƯỚC 5: DEPLOY BOT LÊN RENDER & CẤU HÌNH BIẾN MÔI TRƯỜNG ---
+@app.route("/api/step5/render", methods=["POST"])
+def api_step5_render():
+    data = request.get_json(silent=True) or {}
+    updates = {}
+    for k in ["BOT_TOKEN", "CHAT_ID", "TIMEZONE", "SUPABASE_URL", "SUPABASE_KEY", "WEBHOOK_URL", "GEMINI_API_KEY"]:
+        if k in data:
+            updates[k] = data[k]
+    env = save_env_config(updates)
+
+    # Kiểm tra nếu người dùng đã điền URL Render thì ping kiểm tra trạng thái Live
+    live_check = None
+    render_url = env.get("WEBHOOK_URL", "").strip().rstrip("/")
+    if render_url.endswith("/webhook"):
+        render_url = render_url[:-8]
+
+    if render_url and render_url.startswith("http"):
+        try:
+            r = requests.get(f"{render_url}/ping", timeout=8)
+            live_check = {
+                "ok": r.status_code == 200,
+                "status_code": r.status_code,
+                "response": r.text[:200]
+            }
+        except Exception as e:
+            live_check = {"ok": False, "error": str(e)}
+
+    logger.info("Updated Render Environment Variables & Blueprint configuration")
+    return jsonify({
+        "ok": True,
+        "env": env,
+        "live_check": live_check,
+        "message": "Đã lưu cấu hình biến môi trường (BOT_TOKEN, CHAT_ID, TIMEZONE) và cập nhật render.yaml!"
+    })
+
+
+# --- BƯỚC 6: KẾT NỐI TELEGRAM WEBHOOK & LOCAL POLLING ---
+@app.route("/api/step6/webhook", methods=["POST"])
+def api_step6_webhook():
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "info")
+
+    if action == "set":
+        raw_url = (data.get("WEBHOOK_URL") or get_env_config().get("WEBHOOK_URL", "")).strip().rstrip("/")
+        if not raw_url.startswith("https://"):
+            return jsonify({
+                "ok": False,
+                "message": "URL Webhook bắt buộc phải sử dụng giao thức bảo mật https:// (Ví dụ: https://your-app.onrender.com/webhook)"
+            })
+        webhook_endpoint = raw_url if raw_url.endswith("/webhook") else f"{raw_url}/webhook"
+        save_env_config({"WEBHOOK_URL": webhook_endpoint})
+
+        # Dừng Polling nếu đang bật
+        POLLING_STATE["running"] = False
+
+        logger.info("Setting up webhook...")
+        set_payload: Dict[str, Any] = {"url": webhook_endpoint, "drop_pending_updates": False}
+        wh_secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+        if wh_secret:
+            set_payload["secret_token"] = wh_secret
+        res = telegram_api("setWebhook", set_payload)
+        if res.get("ok"):
+            logger.info("Webhook configured successfully!")
+        info = telegram_api("getWebhookInfo")
+        return jsonify({
+            "ok": res.get("ok", False),
+            "set_result": res,
+            "webhook_info": info,
+            "webhook_url": webhook_endpoint
+        })
+
+    if action == "delete":
+        res = telegram_api("deleteWebhook")
+        info = telegram_api("getWebhookInfo")
+        logger.info("Deleted Telegram webhook")
+        return jsonify({"ok": res.get("ok", False), "result": res, "webhook_info": info})
+
+    if action == "toggle_polling":
+        if IS_VERCEL:
+            return jsonify({
+                "ok": False,
+                "running": False,
+                "message": "Local Polling chi chay tren may tinh cua ban. Ban dang mo ban online (Vercel) - hay dung che do Webhook o Buoc 6."
+            })
+        if POLLING_STATE["running"]:
+            POLLING_STATE["running"] = False
+            logger.info("Stopped Local Polling mode")
+            return jsonify({"ok": True, "running": False, "message": "Đã dừng chế độ Polling cục bộ."})
+        else:
+            # Xóa webhook trước khi bật getUpdates polling
+            telegram_api("deleteWebhook")
+            POLLING_STATE["running"] = True
+            t = threading.Thread(target=_polling_worker, daemon=True)
+            POLLING_STATE["thread"] = t
+            t.start()
+            logger.info("Starting bot in Local Polling mode...")
+            logger.info("Bot is running...")
+            logger.info("All systems operational")
+            return jsonify({
+                "ok": True,
+                "running": True,
+                "message": "Đã bật chế độ Local Polling! Bạn có thể nhắn tin trực tiếp cho Bot trên Telegram ngay bây giờ."
+            })
+
+    info = telegram_api("getWebhookInfo")
+    return jsonify({"ok": info.get("ok", False), "webhook_info": info})
+
+
+def _polling_worker():
+    """Luồng chạy ngầm nhận tin nhắn từ Telegram khi người dùng test máy cục bộ."""
+    while POLLING_STATE["running"]:
+        try:
+            token = get_env_config().get("BOT_TOKEN", "")
+            if not token:
+                time.sleep(3)
+                continue
+            offset = POLLING_STATE["last_update_id"] + 1
+            res = telegram_api("getUpdates", {"offset": offset, "timeout": 5}, token=token)
+            if res.get("ok"):
+                for upd in res.get("result", []):
+                    POLLING_STATE["last_update_id"] = max(POLLING_STATE["last_update_id"], upd.get("update_id", 0))
+                    process_telegram_update(upd)
+        except Exception as e:
+            logger.warning(f"Polling error: {e}")
+        time.sleep(1.5)
+
+
+# --- BƯỚC 7: THIẾT LẬP BOT TƯ VẤN AI & THANH TOÁN ---
+@app.route("/api/step7/config", methods=["POST"])
+def api_step7_config():
+    data = request.get_json(silent=True) or {}
+    if "GEMINI_API_KEY" in data:
+        save_env_config({"GEMINI_API_KEY": data["GEMINI_API_KEY"]})
+
+    settings_update = {}
+    for k in ["shop_name", "shop_url", "support_username", "fanpage_url", "shipping_inner_city", "shipping_province", "payment"]:
+        if k in data:
+            settings_update[k] = data[k]
+
+    updated = db.update_settings(settings_update)
+    logger.info("Updated Step 7 AI Consultant & Payment settings (PayPal, USDT, QR, Multilingual FAQ)")
+    return jsonify({"ok": True, "settings": updated})
+
+
+# --- BƯỚC 8: TÍCH HỢP BOT VÀO NHÓM & CHỐNG SPAM ---
+@app.route("/api/step8/group", methods=["POST"])
+def api_step8_group():
+    data = request.get_json(silent=True) or {}
+    group_cfg = data.get("group_config", {})
+    if isinstance(group_cfg.get("trigger_keywords"), str):
+        group_cfg["trigger_keywords"] = [
+            k.strip() for k in group_cfg["trigger_keywords"].split(",") if k.strip()
+        ]
+    if isinstance(group_cfg.get("ignored_keywords"), str):
+        group_cfg["ignored_keywords"] = [
+            k.strip() for k in group_cfg["ignored_keywords"].split(",") if k.strip()
+        ]
+
+    updated = db.update_settings({"group_config": group_cfg})
+
+    # Kiểm tra trạng thái Group Privacy từ Telegram getMe
+    me = telegram_api("getMe")
+    can_read_group = False
+    if me.get("ok"):
+        can_read_group = bool(me["result"].get("can_read_all_group_messages", False))
+
+    logger.info("Updated Step 8 Group integration & Anti-Spam keyword filter settings")
+    return jsonify({
+        "ok": True,
+        "settings": updated,
+        "can_read_all_group_messages": can_read_group
+    })
+
+
+# --- BƯỚC 9: KIỂM TRA BOT, GIẢ LẬP CHAT & CHẨN ĐOÁN LỖI ---
+@app.route("/api/signal-relay", methods=["POST"])
+def api_signal_relay():
+    """
+    Cau noi tin hieu -> Telegram: nhan tin hieu dat chuan va phat toi chat
+    dich (coin: chat_id trong bang bots; forex: SIGNAL_CHAT_ID hoac CHAT_ID).
+    Bao ve bang header X-Signal-Key (bien SIGNAL_KEY), KHONG dung ADMIN_KEY.
+    Loc nguong diem + chong trung theo loai tin hieu (coin 70/60 phut,
+    forex 80/30 phut). Tin coin gui bang token cua bot coin (token_env).
+    """
+    if not signal_relay.signal_key():
+        return jsonify({"ok": False, "message": "Chua cau hinh SIGNAL_KEY phia server."}), 503
+    if not signal_relay.check_key(request.headers.get("X-Signal-Key")):
+        return jsonify({"ok": False, "message": "Sai hoac thieu X-Signal-Key."}), 401
+    payload = request.get_json(silent=True) or {}
+    sig, err = signal_relay.validate_signal(payload)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    is_demo = bool(sig.get("demo"))
+    score = sig.get("score")
+    is_coin = signal_relay.is_coin_signal(sig)
+    threshold = signal_relay.min_score_for(sig)
+    # Demo thiet ke (co X-Signal-Key hop le): bo qua nguong + chong trung,
+    # nhung van gan nhan TEST ro rang va khong hien trong /tin_hieu.
+    if not is_demo and score is not None and score < threshold:
+        signal_relay.record_signal(sig, sent=False, reason="below_threshold")
+        return jsonify({"ok": True, "sent": False, "reason": "below_threshold",
+                        "min_score": threshold})
+    dup = None if is_demo else signal_relay.find_duplicate(sig)
+    if dup:
+        signal_relay.record_signal(sig, sent=False, reason="duplicate")
+        return jsonify({"ok": True, "sent": False, "reason": "duplicate",
+                        "first_received_at": dup.get("_received_at")})
+    # Chat + token theo loai tin hieu: coin -> bang bots (chat_id + token_env);
+    # forex -> SIGNAL_CHAT_ID/CHAT_ID + BOT_TOKEN mac dinh.
+    token = None
+    if is_coin:
+        chat_id = signal_relay.destination_chat_id_for(sig)
+        token = signal_relay.coin_token() or None
+    else:
+        chat_id = signal_relay.destination_chat_id()
+    if not chat_id:
+        return jsonify({"ok": False,
+                        "message": "Chua cau hinh SIGNAL_CHAT_ID hoac CHAT_ID de nhan tin hieu."}), 503
+    if is_coin and not token:
+        return jsonify({"ok": False,
+                        "message": "Chua cau hinh token bot coin (bien moi truong ghi trong cot token_env cua bot coin)."}), 503
+    text = signal_relay.format_signal_message(sig)
+    keyboard = signal_relay.signal_keyboard(sig)
+    png = None
+    candles = sig.get("candles") or []
+    if len(candles) < 5 and sig.get("symbol") == "BTCUSD":
+        candles = chart_mod.fetch_btc_candles()
+    if len(candles) < 5 and is_coin:
+        # Tram da lay nen Binance kem payload; neu khong co (loi mang phia
+        # tram) thi Flask thu lay lai — van loi thi gui tin khong chart.
+        candles = chart_mod.fetch_coin_candles(sig.get("symbol", ""))
+    if len(candles) >= 5:
+        png = chart_mod.draw_chart(
+            candles,
+            {"entry": sig.get("entry_price"), "stop_loss": sig.get("stop_loss"),
+             "tp1": sig.get("tp1"), "tp2": sig.get("tp2"), "tp3": sig.get("tp3")},
+            sig["symbol"], sig["direction"],
+            "CoinGecko BTC/USD 30m" if sig.get("symbol") == "BTCUSD" and not sig.get("candles") else sig["timeframe"])
+    res = {"ok": False}
+    if png:
+        if len(text) <= 1024:
+            res = telegram_api("sendPhoto", {
+                "chat_id": chat_id, "caption": text, "parse_mode": "Markdown",
+                "reply_markup": keyboard,
+            }, token=token, files={"photo": ("chart.png", png, "image/png")})
+        else:
+            short = text.split("\n```")[0]
+            res = telegram_api("sendPhoto", {
+                "chat_id": chat_id, "caption": short, "parse_mode": "Markdown",
+            }, token=token, files={"photo": ("chart.png", png, "image/png")})
+            if res.get("ok"):
+                res = telegram_api("sendMessage", {
+                    "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+                    "reply_markup": keyboard,
+                }, token=token)
+    else:
+        res = telegram_api("sendMessage", {
+            "chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+            "reply_markup": keyboard,
+        }, token=token)
+    if not res.get("ok"):
+        # Fallback khong Markdown neu dinh dang gay loi
+        res = telegram_api("sendMessage", {
+            "chat_id": chat_id, "text": text, "reply_markup": keyboard,
+        }, token=token)
+    if not res.get("ok"):
+        return jsonify({"ok": False,
+                        "message": f"Telegram tu choi: {res.get('description', 'loi khong ro')}"}), 502
+    # Tin coin: gui them the chi tiet (nhu khi bam Charts o tin forex).
+    # Best-effort: the gui loi cung khong anh huong tin chinh da gui.
+    if is_coin:
+        try:
+            card = chart_mod.draw_detail_card(sig, sig.get("score_breakdown") or [])
+            if card:
+                detail = signal_relay.detail_view(sig)
+                if len(detail) > 1024:
+                    detail = detail[:1000] + "…"
+                telegram_api("sendPhoto", {
+                    "chat_id": chat_id, "caption": detail, "parse_mode": "Markdown",
+                }, token=token, files={"photo": ("detail.png", card, "image/png")})
+        except Exception as e:
+            logger.warning(f"Gui the chi tiet coin that bai (tin chinh da gui): {e}")
+    signal_relay.record_signal(sig, sent=True)
+    logger.info(f"Signal relayed: {sig['symbol']} {sig['direction']} score={score} coin={is_coin}")
+    return jsonify({"ok": True, "sent": True, "chat_id": chat_id})
+
+
+@app.route("/api/signals", methods=["GET"])
+def api_signals():
+    """Danh sach tin hieu gan day (chi doc, da qua khoa ADMIN_KEY)."""
+    return jsonify({"ok": True, "signals": signal_relay.recent_signals(limit=20)})
+
+
+@app.route("/api/users", methods=["GET"])
+def api_users():
+    """Danh sach nguoi dung bot cho bang quan tri (chi doc; khoa ADMIN_KEY o before_request)."""
+    return jsonify({"ok": True, "users": users_mod.list_users()})
+
+
+@app.route("/api/users/enrich", methods=["POST"])
+def api_users_enrich():
+    """Bổ sung username còn thiếu cho các user đã ghi (qua Telegram getChat)."""
+    enriched, still_missing = [], []
+    for u in users_mod.list_users():
+        if u.get("username"):
+            continue
+        _enrich_username(u["chat_id"])
+        after = users_mod.get_user(u["chat_id"]) or {}
+        (enriched if after.get("username") else still_missing).append(u["chat_id"])
+    return jsonify({"ok": True, "enriched": enriched, "still_missing": still_missing})
+
+
+# --- QUẢN LÝ NHIỀU BOT (BOTS) — chỉ tên/cài đặt, KHÔNG lưu token ---
+# Token của từng bot chỉ nằm trong GitHub Secrets (sender) hoặc biến môi
+# trường Vercel (bot chính). Web không lưu token ở bất cứ đâu: không cột
+# token trong DB, không ghi token vào file hay log.
+BOT_KINDS = ("coin", "forex", "sales", "khac")
+
+
+def _clean_bot_input(data):
+    """Chuẩn hóa + kiểm tra field bot. Trả (dict đã chuẩn hóa, None) hoặc (None, lỗi)."""
+    out = {}
+    name = str(data.get("name", "") or "").strip()
+    if not name:
+        return None, "Tên bot không được để trống."
+    if len(name) > 80:
+        return None, "Tên bot tối đa 80 ký tự."
+    out["name"] = name
+    username = str(data.get("username", "") or "").strip().lstrip("@").lower()
+    if not username:
+        return None, "Username bot không được để trống."
+    if not username.endswith("bot"):
+        return None, "Username bot phải kết thúc bằng 'bot' (ví dụ: trademrbit_bot)."
+    if len(username) < 5 or len(username) > 32 or not all(c.isalnum() or c == "_" for c in username):
+        return None, "Username bot chỉ gồm chữ, số, gạch dưới, dài 5–32 ký tự."
+    out["username"] = username
+    kind = str(data.get("kind", "khac") or "khac").strip().lower()
+    out["kind"] = kind if kind in BOT_KINDS else "khac"
+    chat_id = str(data.get("chat_id", "") or "").strip()
+    if chat_id and not chat_id.isdigit():
+        return None, "Chat ID chỉ gồm chữ số (ví dụ: 5753439659)."
+    out["chat_id"] = chat_id
+    out["enabled"] = bool(data.get("enabled", True))
+    out["notes"] = str(data.get("notes", "") or "").strip()[:500]
+    token_env = str(data.get("token_env", "") or "").strip()
+    if token_env and (len(token_env) > 64 or not all(c.isupper() or c.isdigit() or c == "_" for c in token_env)):
+        return None, "Token env chỉ gồm chữ HOA, số, gạch dưới (vd: BOT_TOKEN_TRADEMRBIT)."
+    out["token_env"] = token_env
+    raw_id = str(data.get("id", "") or "").strip().lower()
+    slug_src = raw_id or username
+    out["id"] = "".join(c if c.isalnum() or c == "_" else "_" for c in slug_src).strip("_")
+    if not out["id"]:
+        return None, "Không tạo được id cho bot."
+    return out, None
+
+
+@app.route("/api/bots", methods=["GET"])
+def api_bots_list():
+    """Danh sách bot (kèm username bot env để Dashboard đánh dấu bot chính)."""
+    return jsonify({"ok": True, "bots": db.get_bots(), "env_bot_username": _legacy_bot_username()})
+
+
+@app.route("/api/bots", methods=["POST"])
+def api_bots_create():
+    data = request.get_json(silent=True) or {}
+    bot, err = _clean_bot_input(data)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    if db.get_bot_by_id(bot["id"]):
+        return jsonify({"ok": False, "message": f"Bot id '{bot['id']}' đã có trong danh sách."}), 400
+    saved = db.upsert_bot(bot)
+    logger.info(f"Da them bot @{saved.get('username')} (kind={saved.get('kind')})")
+    return jsonify({"ok": True, "bot": saved, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>", methods=["POST"])
+def api_bots_update(bot_id):
+    existing = db.get_bot_by_id(bot_id)
+    if not existing:
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    data = request.get_json(silent=True) or {}
+    merged = dict(existing)
+    for field in ("name", "username", "kind", "chat_id", "enabled", "notes", "token_env"):
+        if field in data:
+            merged[field] = data[field]
+    merged["id"] = bot_id  # id không đổi khi sửa
+    bot, err = _clean_bot_input(merged)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    saved = db.upsert_bot(bot)
+    logger.info(f"Da cap nhat bot @{saved.get('username')} (enabled={saved.get('enabled')})")
+    return jsonify({"ok": True, "bot": saved, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>", methods=["DELETE"])
+def api_bots_delete(bot_id):
+    if not db.get_bot_by_id(bot_id):
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    db.delete_bot(bot_id)
+    logger.info(f"Da xoa bot '{bot_id}' khoi danh sach quan ly")
+    return jsonify({"ok": True, "bots": db.get_bots()})
+
+
+@app.route("/api/bots/<bot_id>/verify", methods=["POST"])
+def api_bots_verify(bot_id):
+    """Xác thực bot bằng token dùng 1 lần: getMe + cài menu lệnh + setWebhook.
+    Token chỉ nằm trong body request, KHÔNG lưu, KHÔNG ghi log."""
+    bot = db.get_bot_by_id(bot_id)
+    if not bot:
+        return jsonify({"ok": False, "message": f"Khong co bot '{bot_id}'."}), 404
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    if not token or ":" not in token:
+        return jsonify({"ok": False, "message": "Định dạng token chưa hợp lệ (dạng 1234567890:AAH7bX9k...)."}), 400
+    me = telegram_api("getMe", token=token)
+    if not me.get("ok"):
+        return jsonify({"ok": False, "message": f"Telegram từ chối token: {me.get('description', 'Token không hợp lệ')}"}), 400
+    info = me.get("result", {})
+    telegram_api("setMyCommands", {"commands": BOT_COMMANDS}, token=token)
+    webhook_url = f"{_app_base_url()}/webhook/{bot_id}"
+    set_payload: Dict[str, Any] = {"url": webhook_url, "drop_pending_updates": False}
+    wh_secret = get_env_config().get("TELEGRAM_WEBHOOK_SECRET", "")
+    if wh_secret:
+        set_payload["secret_token"] = wh_secret
+    set_res = telegram_api("setWebhook", set_payload, token=token)
+    wh_info = telegram_api("getWebhookInfo", token=token)
+    # Cập nhật tên/username theo Telegram (nguồn chính xác nhất).
+    updated = db.upsert_bot({
+        "id": bot_id,
+        "name": info.get("first_name") or bot.get("name"),
+        "username": (info.get("username") or bot.get("username", "")).lower(),
+        "kind": bot.get("kind", "khac"),
+        "chat_id": bot.get("chat_id", ""),
+        "enabled": bot.get("enabled", True),
+        "notes": bot.get("notes", ""),
+    })
+    logger.info(f"Da xac thuc bot @{updated.get('username')} (token {mask_secret(token)}) — webhook: {webhook_url}")
+    webhook_ok = bool(set_res.get("ok"))
+    return jsonify({
+        "ok": True,
+        "bot": updated,
+        "bot_info": {"id": info.get("id"), "username": info.get("username"), "first_name": info.get("first_name")},
+        "webhook_url": webhook_url,
+        "webhook_set": webhook_ok,
+        "webhook_info": wh_info.get("result", {}) if wh_info.get("ok") else {},
+        "token_tail": mask_secret(token),
+        "message": f"Đã xác thực @{info.get('username')} và gắn webhook {webhook_url}." if webhook_ok else f"Đã xác thực @{info.get('username')} nhưng gắn webhook thất bại: {set_res.get('description', 'lỗi không rõ')}",
+    })
+
+
+@app.route("/api/step9/simulate", methods=["POST"])
+def api_step9_simulate():
+    """
+    Trình giả lập (Simulator) cho phép test lệnh /start, nút bấm FAQ/Bảng giá/Hỗ trợ
+    và test kịch bản Nhóm Hỗ Trợ Khách Hàng ngay trên giao diện Web (hoặc gửi thật qua Telegram).
+    """
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "/start")
+    chat_type = data.get("chat_type", "private")
+    user_id = data.get("user_id", "sim_user_1")
+    full_name = data.get("full_name", "Khách hàng Test")
+    callback_data = data.get("callback_data")
+    send_real = bool(data.get("send_real", False))
+
+    reply = generate_bot_reply(
+        text=text,
+        chat_type=chat_type,
+        user_id=user_id,
+        full_name=full_name,
+        callback_data=callback_data
+    )
+
+    real_telegram_res = None
+    env = get_env_config()
+    if send_real and env.get("BOT_TOKEN") and env.get("CHAT_ID") and reply.get("responded"):
+        payload: Dict[str, Any] = {
+            "chat_id": env["CHAT_ID"],
+            "text": reply["text"],
+            "parse_mode": "Markdown"
+        }
+        if reply.get("reply_markup"):
+            payload["reply_markup"] = reply["reply_markup"]
+        real_telegram_res = telegram_api("sendMessage", payload)
+
+    return jsonify({
+        "ok": True,
+        "input": {"text": text, "chat_type": chat_type, "full_name": full_name, "callback_data": callback_data},
+        "reply": reply,
+        "real_telegram_res": real_telegram_res
+    })
+
+
+@app.route("/api/step9/diagnostics", methods=["POST", "GET"])
+def api_step9_diagnostics():
+    """
+    BƯỚC 9: Thực hiện 4 bài kiểm tra toàn diện & đối chiếu 4 nhóm lỗi:
+    1. Test lệnh /start
+    2. Kiểm tra Webhook (getWebhookInfo)
+    3. Đối chiếu FAQ & Bảng giá
+    4. Kiểm tra 4 nhóm lỗi (Lỗi kết nối, Lỗi webhook, Lỗi câu trả lời, Lỗi deploy)
+    """
+    logger.info("Starting bot diagnostics...")
+    env = get_env_config()
+
+    # 1. Test lệnh /start
+    start_reply = generate_bot_reply(text="/start", chat_type="private", user_id="diag_test")
+    test1_ok = bool(start_reply.get("responded") and "Xin chào!" in start_reply.get("text", ""))
+
+    # 2. Kiểm tra kết nối Telegram & Webhook
+    me_res = telegram_api("getMe")
+    webhook_res = telegram_api("getWebhookInfo")
+    conn_ok = bool(me_res.get("ok"))
+    wh_result = webhook_res.get("result", {}) if webhook_res.get("ok") else {}
+    wh_ok = bool(webhook_res.get("ok"))
+
+    # 3. Đối chiếu FAQ & Bảng giá
+    faqs_vi = db.get_faqs("VI")
+    faqs_en = db.get_faqs("EN")
+    faqs_ru = db.get_faqs("RU")
+    pricing = db.get_pricing()
+    products = db.get_products()
+    faq_price_ok = len(faqs_vi) > 0 and len(faqs_en) > 0 and len(faqs_ru) > 0 and len(pricing) > 0 and len(products) > 0
+
+    # 4. Kiểm tra cấu hình Deploy (requirements.txt, main.py, render.yaml, Procfile)
+    deploy_files = ["main.py", "faq_engine.py", "database.py", "requirements.txt", "render.yaml", "Procfile"]
+    missing_files = [f for f in deploy_files if not os.path.exists(os.path.join(BASE_DIR, f))]
+    deploy_ok = len(missing_files) == 0
+
+    if conn_ok:
+        logger.info("Connected to Telegram")
+    if test1_ok and faq_price_ok and deploy_ok:
+        logger.info("All systems operational")
+
+    checklist = {
+        "loi_ket_noi": {
+            "name": "Lỗi kết nối (Telegram & Database)",
+            "passed": conn_ok,
+            "detail": f"Đã kết nối @{me_res.get('result', {}).get('username')}" if conn_ok else "Chưa nhập hoặc sai BOT_TOKEN ở Bước 1 (Local DB vẫn hoạt động tốt)."
+        },
+        "loi_webhook": {
+            "name": "Lỗi Webhook / Polling",
+            "passed": bool(wh_result.get("url")) or POLLING_STATE["running"],
+            "detail": (
+                f"Webhook URL: {wh_result.get('url')}"
+                if wh_result.get("url")
+                else ("Đang chạy chế độ Local Polling trực tiếp" if POLLING_STATE["running"] else "Chưa gắn URL Webhook HTTPS hoặc chưa bật Local Polling ở Bước 6.")
+            )
+        },
+        "loi_cau_tra_loi": {
+            "name": "Lỗi câu trả lời (FAQ & Bảng giá)",
+            "passed": test1_ok and faq_price_ok,
+            "detail": f"Đã nạp {len(products)} sản phẩm, {len(pricing)} bảng giá, {len(faqs_vi)+len(faqs_en)+len(faqs_ru)} câu FAQ (VI/EN/RU)."
+        },
+        "loi_deploy": {
+            "name": "Lỗi Deploy (Cấu trúc mã nguồn Render)",
+            "passed": deploy_ok,
+            "detail": "Đầy đủ 100% file chuẩn Render (main.py, faq_engine.py, database.py, requirements.txt, render.yaml, Procfile)." if deploy_ok else f"Thiếu file: {', '.join(missing_files)}"
+        }
+    }
+
+    return jsonify({
+        "ok": True,
+        "start_test": start_reply,
+        "webhook_info": webhook_res if webhook_res.get("ok") else {
+            "ok": True,
+            "note": "Mẫu cấu hình chuẩn (Nhập BOT_TOKEN thật ở Bước 1 để xem dữ liệu thực từ api.telegram.org)",
+            "result": {
+                "url": env.get("WEBHOOK_URL") or "https://your-app.onrender.com/webhook",
+                "has_custom_certificate": False,
+                "pending_update_count": 0
+            }
+        },
+        "data_audit": {
+            "products_count": len(products),
+            "pricing_count": len(pricing),
+            "faqs_vi": len(faqs_vi),
+            "faqs_en": len(faqs_en),
+            "faqs_ru": len(faqs_ru),
+            "passed": faq_price_ok
+        },
+        "checklist": checklist,
+        "logs": SYSTEM_LOGS[-30:]
+    })
+
+
+# Khởi tạo các dòng log chuẩn theo hình Bước 9 khi khởi động Server
+def _init_boot_logs():
+    generate_supabase_sql()
+    mode = "Vercel (Webhook)" if IS_VERCEL else "Local (Polling/Webhook)"
+    logger.info(f"Starting bot... Che do: {mode}")
+    env = get_env_config()
+    if env.get("BOT_TOKEN"):
+        logger.info("BOT_TOKEN da co - bot san sang phan hoi qua Webhook/Polling.")
+    else:
+        logger.info("Chua co BOT_TOKEN - nhap token o Buoc 1 de bot phan hoi Telegram.")
+
+
+_init_boot_logs()
+
+
+# --- WSGI middleware cho Vercel -------------------------------------------------
+# vercel.json rewrite moi request ve /api/index/<duong-dan-goc> va Vercel dat
+# PATH_INFO = /api/index/<duong-dan-goc>. Flask khop route theo PATH_INFO nen
+# phai cat tien to "/api/index" (chuyen sang SCRIPT_NAME) truoc khi Flask xu ly.
+# Khi chay local, PATH_INFO khong co tien to nay nen middleware khong lam gi.
+class _StripApiIndexPrefix:
+    PREFIX = "/api/index"
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.PREFIX or path.startswith(self.PREFIX + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.PREFIX
+            environ["PATH_INFO"] = path[len(self.PREFIX):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _StripApiIndexPrefix(app.wsgi_app)
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print("=" * 72)
+    print("🚀 HỆ THỐNG AUTO TẠO BOT TELEGRAM 9 BƯỚC ĐÃ KHỞI ĐỘNG!")
+    print(f"👉 Mở trình duyệt tại: http://127.0.0.1:{port}/dashboard")
+    print(f"👉 Endpoint Webhook:   http://127.0.0.1:{port}/webhook")
+    print("=" * 72)
+    app.run(host="0.0.0.0", port=port, debug=False)
