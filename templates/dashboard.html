@@ -718,6 +718,10 @@
       <span class="step-num">👥</span>
       <span class="step-label">Người Dùng<br>& Kiểm Soát</span>
     </button>
+    <button class="step-tab" onclick="switchStep(11)" data-step="11">
+      <span class="step-num">🤖</span>
+      <span class="step-label">Quản Lý<br>Nhiều Bot</span>
+    </button>
   </nav>
 
   <!-- MAIN CONTENT -->
@@ -1170,6 +1174,82 @@
         </table>
       </section>
 
+      <!-- ==================== BƯỚC 11: QUẢN LÝ NHIỀU BOT ==================== -->
+      <section class="step-panel" id="panel-step-11">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="step-badge">QUẢN TRỊ</span>
+            <h2>QUẢN LÝ NHIỀU BOT TELEGRAM</h2>
+            <p>Quản lý tên, loại, chat nhận tin và trạng thái bật/tắt của nhiều bot. <b>Web KHÔNG lưu token</b>: token chỉ nằm trong GitHub Secrets (sender tín hiệu coin) hoặc biến môi trường Vercel (bot chính). Xác thực bot bằng token 1 lần để gắn webhook riêng <code>/webhook/&lt;bot_id&gt;</code>.</p>
+          </div>
+          <div>
+            <button class="btn" onclick="loadBots()">↻ Tải lại</button>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <h4>📋 Danh sách bot</h4>
+          <div id="botsStatus" style="margin-bottom:10px"></div>
+          <table class="table-clean">
+            <thead><tr><th>Tên bot</th><th>Username</th><th>Loại</th><th>Chat ID</th><th>Token env</th><th>Bật</th><th>Hành động</th></tr></thead>
+            <tbody id="botsTableBody"><tr><td colspan="7">Đang tải...</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="sub-card">
+          <h4>➕ Thêm bot mới</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Tên bot *</label>
+              <input type="text" id="botName" class="form-control" placeholder="VD: Trade.Mrbit">
+            </div>
+            <div class="form-group">
+              <label>Username *</label>
+              <input type="text" id="botUsername" class="form-control" placeholder="VD: trademrbit_bot">
+            </div>
+            <div class="form-group">
+              <label>Loại bot</label>
+              <select id="botKind" class="form-control">
+                <option value="coin">🪙 Coin (Trade.2026)</option>
+                <option value="forex">📈 Forex / Vàng</option>
+                <option value="sales">🛒 Bán hàng</option>
+                <option value="khac">Khác</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Chat ID nhận tin (số)</label>
+              <input type="text" id="botChatId" class="form-control" placeholder="VD: 5753439659">
+            </div>
+            <div class="form-group">
+              <label>Token env (tên biến trên Vercel — chỉ tên, không phải giá trị token)</label>
+              <input type="text" id="botTokenEnv" class="form-control" placeholder="VD: BOT_TOKEN_TRADEMRBIT">
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Ghi chú</label>
+              <input type="text" id="botNotes" class="form-control" placeholder="VD: Bot báo tín hiệu coin — token trong GitHub Secrets">
+            </div>
+          </div>
+          <button class="btn btn-red" onclick="addBot()">➕ Thêm bot</button>
+        </div>
+
+        <div class="sub-card">
+          <h4>🔑 Xác thực bot (dùng token 1 lần, không lưu)</h4>
+          <p style="font-size:13px;opacity:.8">Dán token lấy từ <b>@BotFather</b> → bấm <b>Xác thực &amp; gắn webhook</b>. Web chỉ dùng token để gọi Telegram <code>getMe</code> + cài menu lệnh + gắn webhook, rồi <b>quên ngay</b> — không lưu vào DB, file hay log. Sau bước này nhớ <b>xóa tin nhắn chứa token</b> trong Telegram.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Chọn bot</label>
+              <select id="verifyBotId" class="form-control"></select>
+            </div>
+            <div class="form-group">
+              <label>Bot Token (dán 1 lần)</label>
+              <input type="password" id="verifyToken" class="form-control" placeholder="1234567890:AAH7bX9k..." autocomplete="off">
+            </div>
+          </div>
+          <button class="btn btn-red" onclick="verifyBot()">🔑 Xác thực &amp; gắn webhook</button>
+          <div id="verifyResult" style="margin-top:14px"></div>
+        </div>
+      </section>
+
 
     </main>
   </div>
@@ -1185,7 +1265,8 @@
       7: "BƯỚC 7: THIẾT LẬP BOT TƯ VẤN AI",
       8: "BƯỚC 8: TÍCH HỢP BOT VÀO NHÓM",
       9: "BƯỚC 9: KIỂM TRA BOT & SỬA LỖI",
-      10: "QUẢN TRỊ: NGƯỜI DÙNG BOT & KIỂM SOÁT"
+      10: "QUẢN TRỊ: NGƯỜI DÙNG BOT & KIỂM SOÁT",
+      11: "QUẢN TRỊ: NHIỀU BOT TELEGRAM"
     };
 
     // SƠ ĐỒ TƯ DUY TỪNG BƯỚC: nút trung tâm + 4 nhánh chính (mỗi nhánh 3 ý nhỏ)
@@ -1291,12 +1372,13 @@
       if (target) target.classList.add("active");
 
       document.getElementById("artworkTitle").textContent = STEP_TITLES[step] || "";
-      document.getElementById("stepCounterBadge").textContent = step === 10 ? "Quản trị" : `Bước ${step} / 9`;
+      document.getElementById("stepCounterBadge").textContent = (step === 10 || step === 11) ? "Quản trị" : `Bước ${step} / 9`;
       if (step <= 9) renderMindmap(step);
 
       if (step === 2) loadStep2Files();
       if (step === 9) runStep9Diagnostics();
       if (step === 10) loadUsers();
+      if (step === 11) loadBots();
     }
 
     function prevStep() {
@@ -1340,6 +1422,144 @@
         tbody.innerHTML = rows || '<tr><td colspan="8">Chưa có người dùng nào tương tác với bot.</td></tr>';
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="7">Lỗi tải danh sách.</td></tr>';
+      }
+    }
+
+    // ============ QUẢN LÝ NHIỀU BOT (BƯỚC 11) ============
+    // Fetch /api/* đã được wrapper toàn cục gắn X-Admin-Key từ sessionStorage.
+    let botsList = [];
+    let envBotUsername = '';
+    const BOT_KIND_LABELS = { coin: '🪙 Coin', forex: '📈 Forex', sales: '🛒 Bán hàng', khac: 'Khác' };
+
+    async function loadBots() {
+      const tbody = document.getElementById('botsTableBody');
+      try {
+        const r = await fetch('/api/bots');
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.message || 'Không tải được danh sách bot');
+        botsList = data.bots || [];
+        envBotUsername = (data.env_bot_username || '').toLowerCase();
+        renderBotsTable();
+        renderVerifyBotSelect();
+      } catch (e) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:#e74c3c">Lỗi tải danh sách bot: ' + escapeHtml(e.message) + '</td></tr>';
+      }
+    }
+
+    function renderBotsTable() {
+      const tbody = document.getElementById('botsTableBody');
+      if (!tbody) return;
+      if (!botsList.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999">Chưa có bot nào. Thêm bot mới ở khung bên dưới.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = botsList.map(b => {
+        const isEnv = envBotUsername && (b.username || '').toLowerCase() === envBotUsername;
+        const badge = isEnv ? ' <span style="background:#27ae60;color:#fff;font-size:11px;padding:2px 6px;border-radius:10px">BOT CHÍNH</span>' : '';
+        return '<tr>'
+          + '<td><b>' + escapeHtml(b.name || '') + '</b>' + badge + '</td>'
+          + '<td><a href="https://t.me/' + escapeHtml(b.username || '') + '" target="_blank">@' + escapeHtml(b.username || '') + '</a></td>'
+          + '<td>' + (BOT_KIND_LABELS[b.kind] || escapeHtml(b.kind || 'Khác')) + '</td>'
+          + '<td>' + escapeHtml(b.chat_id || '—') + '</td>'
+          + '<td><code>' + escapeHtml(b.token_env || '—') + '</code></td>'
+          + '<td><input type="checkbox" ' + (b.enabled ? 'checked' : '') + ' onchange="toggleBot(\'' + escapeHtml(b.id) + '\', this.checked)" title="Bật/tắt bot"></td>'
+          + '<td style="white-space:nowrap">'
+          + '<button class="btn btn-outline" style="padding:6px 12px;font-size:13px" onclick="editBotChatId(\'' + escapeHtml(b.id) + '\')">✏️ Chat ID</button> '
+          + '<button class="btn btn-red" style="padding:6px 12px;font-size:13px" onclick="deleteBot(\'' + escapeHtml(b.id) + '\', \'' + escapeHtml(b.name || '') + '\')">🗑️ Xóa</button>'
+          + '</td></tr>';
+      }).join('');
+    }
+
+    function renderVerifyBotSelect() {
+      const sel = document.getElementById('verifyBotId');
+      if (!sel) return;
+      sel.innerHTML = botsList.map(b => '<option value="' + escapeHtml(b.id) + '">' + escapeHtml(b.name) + ' (@' + escapeHtml(b.username) + ')</option>').join('');
+    }
+
+    function showBotsStatus(msg, isError) {
+      const el = document.getElementById('botsStatus');
+      if (!el) return;
+      el.innerHTML = '<div class="alert-box ' + (isError ? 'alert-error' : 'alert-success') + '">' + escapeHtml(msg) + '</div>';
+      setTimeout(() => { el.innerHTML = ''; }, 6000);
+    }
+
+    async function addBot() {
+      const payload = {
+        name: document.getElementById('botName').value.trim(),
+        username: document.getElementById('botUsername').value.trim(),
+        kind: document.getElementById('botKind').value,
+        chat_id: document.getElementById('botChatId').value.trim(),
+        token_env: document.getElementById('botTokenEnv').value.trim(),
+        notes: document.getElementById('botNotes').value.trim()
+      };
+      if (!payload.name || !payload.username) { showBotsStatus('Vui lòng nhập đủ Tên bot và Username.', true); return; }
+      try {
+        const r = await fetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.message || 'Thêm bot thất bại');
+        document.getElementById('botName').value = '';
+        document.getElementById('botUsername').value = '';
+        document.getElementById('botChatId').value = '';
+        document.getElementById('botTokenEnv').value = '';
+        document.getElementById('botNotes').value = '';
+        await loadBots();
+        showBotsStatus('✅ Đã thêm bot @' + data.bot.username + '. Giờ chọn bot ở khung "Xác thực" và dán token 1 lần để gắn webhook.', false);
+      } catch (e) { showBotsStatus('❌ ' + e.message, true); }
+    }
+
+    async function toggleBot(id, enabled) {
+      try {
+        const r = await fetch('/api/bots/' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.message || 'Cập nhật thất bại');
+        botsList = data.bots || botsList;
+        renderBotsTable();
+      } catch (e) { showBotsStatus('❌ ' + e.message, true); loadBots(); }
+    }
+
+    async function editBotChatId(id) {
+      const bot = botsList.find(b => b.id === id);
+      if (!bot) return;
+      const next = window.prompt('Chat ID nhận tin của bot @' + bot.username + ':', bot.chat_id || '');
+      if (next === null) return;
+      try {
+        const r = await fetch('/api/bots/' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: next.trim() }) });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.message || 'Cập nhật thất bại');
+        await loadBots();
+        showBotsStatus('✅ Đã cập nhật Chat ID.', false);
+      } catch (e) { showBotsStatus('❌ ' + e.message, true); }
+    }
+
+    async function deleteBot(id, name) {
+      if (!window.confirm('Xóa bot "' + name + '" khỏi danh sách quản lý?\n\nLưu ý: chỉ xóa khỏi web — bot trên Telegram và token trong GitHub Secrets / Vercel không bị ảnh hưởng.')) return;
+      try {
+        const r = await fetch('/api/bots/' + encodeURIComponent(id), { method: 'DELETE' });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.message || 'Xóa thất bại');
+        await loadBots();
+        showBotsStatus('✅ Đã xóa bot khỏi danh sách.', false);
+      } catch (e) { showBotsStatus('❌ ' + e.message, true); }
+    }
+
+    async function verifyBot() {
+      const botId = document.getElementById('verifyBotId').value;
+      const token = document.getElementById('verifyToken').value.trim();
+      const resultEl = document.getElementById('verifyResult');
+      if (!botId || !token) {
+        resultEl.innerHTML = '<div class="alert-box alert-error">Vui lòng chọn bot và dán token.</div>';
+        return;
+      }
+      resultEl.innerHTML = '<div class="alert-box">⏳ Đang xác thực với Telegram...</div>';
+      try {
+        const r = await fetch('/api/bots/' + encodeURIComponent(botId) + '/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+        const data = await r.json();
+        document.getElementById('verifyToken').value = '';
+        if (!data.ok) throw new Error(data.message || 'Xác thực thất bại');
+        resultEl.innerHTML = '<div class="alert-box alert-success">✅ ' + escapeHtml(data.message || 'Đã xác thực bot.') + '<br>Webhook: <code>' + escapeHtml(data.webhook_url || '') + '</code></div>';
+        await loadBots();
+      } catch (e) {
+        resultEl.innerHTML = '<div class="alert-box alert-error">❌ ' + escapeHtml(e.message) + '</div>';
       }
     }
 
